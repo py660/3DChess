@@ -33,9 +33,12 @@
       height: 100%;
       margin: 0;
       padding: 0;
+      /*font-size: 1en;*/
+      background-color: white;
+      color: black;
     }
     #output {
-      font-family: monospace;
+      font-family: monospace, monospace;
       -webkit-transform:scale(2.0, 1.0);
       -moz-transform:scale(2.0, 1.0);
       -ms-transform:scale(2.0, 1.0);
@@ -43,7 +46,22 @@
       transform:scale(2.0,1.0);
       display: inline-block;
       margin: 50px 500px;
+      padding: 0;
       color: red;
+    }
+    .unstretch {
+      display: inline-block;
+      -webkit-transform:scale(0.8, 1.5);
+      -moz-transform:scale(0.8, 1.5);
+      -ms-transform:scale(0.8, 1.5);
+      -o-transform:scale(0.8, 1.5);
+      transform:scale(0.8, 1.5);
+      color: black;
+      /*width: 0.5en;
+      font-size: 0.8en;*/
+      line-height: 1em;
+      margin: 0;
+      padding: 0;
     }
     /*@font-face {
       font-family: SquareFont;

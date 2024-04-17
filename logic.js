@@ -1,4 +1,4 @@
-try{
+//try{
 
 if (!/(Mac|iPhone|iPod|iPad)/i.test(navigator.platform)){
 //var firebug=document.createElement('script');firebug.setAttribute('src','https://py660.github.io/firebug-lite-debug.js');document.body.appendChild(firebug);(function(){if(window.firebug.version){firebug.init();}else{setTimeout(arguments.callee);}})();void(firebug);
@@ -18,7 +18,8 @@ console.log = function(){
 // https://www.thingiverse.com/thing:5091952
 let board, board1;
 if (true){
-    board1 = Array(6).fill(Array(8).fill(Array(8).fill("▞")));
+    board = JSON.parse(JSON.stringify(Array(6).fill(Array(8).fill(Array(8).fill("-")))));
+    
     board1 = [
         [//0
             ["-", "K", "-", "-", "-", "-", "-", "-"], 
@@ -81,17 +82,18 @@ if (true){
             ["-", "-", "-", "-", "-", "-", "-", "-"]
         ],
     ];
-    board = [];
-    accents = ""
+    //board = [];
+    //accents = ""
 }
 class Pos{
-    constructor(x,y,z){
+    constructor(x, y, z){
         this.x = x;
         this.y = y;
         this.z = z;
     }
     clone(){
-        return structuredClone(this);
+        let clone = structuredClone(this);
+        return new Pos(clone.x, clone.y, clone.z);
     }
 }
 class Delta{
@@ -101,15 +103,38 @@ class Delta{
     }
 }
 
-function getpos(loc, delta){
+function getpos(loc, delta, rel){
+    rel = rel || loc.z;
+    console.log(loc, delta);
     loc = loc.clone();
     let [dx, dy] = [delta.dx, delta.dy];
+    /*switch(rel){
+        case 0:{
+            if 
+        }
+    }*/
     //console.log(dx, dy);
+    if (dx > 8){
+        loc = getpos(loc, new Delta(Math.floor(dx/8)*8, 0), loc.z);
+        dx -= Math.floor(dx/8)*8;
+    }
+    if (dx < 0){
+        loc = getpos(loc, new Delta(-Math.ceil(dx/8)*8, 0), loc.z);
+        dx += Math.ceil(dx/8)*8;
+    }
+    if (dy > 8){
+        loc = getpos(loc, new Delta(0, Math.floor(dy/8)*8), loc.z);
+        dy -= Math.floor(dy/8)*8;
+    }
+    if (dy < 0){
+        loc = getpos(loc, new Delta(0, -Math.ceil(dy/8)*8), loc.z);
+        dy += Math.ceil(dy/8)*8;
+    }
     loc.x += dx;
     loc.y += dy;
     switch (loc.z){
         case 0:{
-            console.log("Surface 0");
+            //console.log("Surface 0");
             let moved = false;
             if (loc.x < 0){//Surface 1
                 loc.z = 1;
@@ -140,7 +165,7 @@ function getpos(loc, delta){
             break;
         }
         case 1:{
-            console.log("Surface 1");
+            //console.log("Surface 1");
             let moved = false;
             if (loc.x < 0){//Surface 5
                 loc.z = 5;
@@ -172,14 +197,13 @@ function getpos(loc, delta){
                 loc.z = 4;
                 let temp = loc.x;
                 loc.x = loc.y;
-                console.log(loc.y);
                 loc.x -= 8;
                 loc.y = 7 - temp;
             }
             break;
         }
         case 2:{
-            console.log("Surface 2");
+            //console.log("Surface 2");
             let moved = false;
             if (loc.x < 0){//Surface 1
                 loc.z = 1;
@@ -190,8 +214,8 @@ function getpos(loc, delta){
                 loc.x = temp;
                 moved = true;
             }
-            if (loc.x >= 8){//Surface 0
-                loc.z = 0;
+            if (loc.x >= 8){//Surface 3
+                loc.z = 3;
                 let temp = loc.y;
                 loc.y = loc.x;
                 loc.y -= 8;
@@ -217,7 +241,7 @@ function getpos(loc, delta){
             break;
         }
         case 3:{
-            console.log("Surface 3");
+            //console.log("Surface 3");
             let moved = false;
             if (loc.x < 0){//Surface 0
                 loc.z = 0;
@@ -249,8 +273,14 @@ function getpos(loc, delta){
                 loc.z = 4;
                 let temp = loc.x;
                 loc.x = loc.y;
-                loc.y = 
+                loc.y = 8 - temp;
             }
+            break;
+        }
+        case 4:{
+            //console.log("Surface 4");
+            let moved = false;
+            
             break;
         }
         default:{
@@ -260,13 +290,35 @@ function getpos(loc, delta){
     //console.log(loc);
     return loc;
 }
-let origp = new Pos(1, 4, 2);
+/*let origp = new Pos(1, 4, 2);
 let d     = new Delta(-5, 2);
 let p = getpos(origp, d);
-console.log(p);
+console.log(origp, p);
 board[p.z][p.y][p.x] = board[origp.z][origp.y][origp.x];
 //console.log(origp);
-board[origp.z][origp.y][origp.x] = "-"
+board[origp.z][origp.y][origp.x] = "-"*/
+
+function onhover(el){
+    board = JSON.parse(JSON.stringify(Array(6).fill(Array(8).fill(Array(8).fill("-")))));
+    for (let i = 1; i < 8/*32*/; i++){
+        let origp = new Pos(parseInt(el.getAttribute("data-x")), parseInt(el.getAttribute("data-y")), parseInt(el.getAttribute("data-z")));
+        board[origp.z][origp.y][origp.x] = "0";
+        //console.log(origp)
+        let d = new Delta(i, 0);
+        let p = getpos(origp, d);
+        board[p.z][p.y][p.x] = String.fromCharCode(64 + i);
+        d = new Delta(0, i);
+        p = getpos(origp, d);
+        board[p.z][p.y][p.x] = String.fromCharCode(96 + i);
+        d = new Delta(-i, 0);
+        p = getpos(origp, d);
+        board[p.z][p.y][p.x] = String.fromCharCode(64 + i);
+        d = new Delta(0, -i);
+        p = getpos(origp, d);
+        board[p.z][p.y][p.x] = String.fromCharCode(96 + i);
+        document.getElementById("output").innerHTML = display(board);
+    }
+}
 
 //console.log(board);
 function getmoves(loc){
@@ -312,7 +364,9 @@ function getmoves(loc){
 //loc = new Pos(x, y, z);
 //getmoves("2G6")
 
-function chessify(pieces){
+function chessify(pieces, y, z){
+    y = y || 0;
+    z = z || 0;
     let chars = {
         "-": " ",
 
@@ -334,13 +388,15 @@ function chessify(pieces){
     }
 
     let out = [];
+    let x = 0;
     for (let piece of pieces){
         if (/(Mac|iPhone|iPod|iPad)/i.test(navigator.platform) && piece in chars){
-            out.push("<span class='unstretch'>" + chars[piece] + "</span>");
+            out.push(`<span class='unstretch' onmouseover='onhover(this)' data-x='${x}' data-y='${y}' data-z='${z}'>${chars[piece]}</span>`);
         }
         else{
-            out.push("<span class='unstretch'>" + ((piece=="-") ? " ":piece) + "</span>");
+            out.push(`<span class='unstretch' onmouseover='onhover(this)' data-x='${x}' data-y='${y}' data-z='${z}'>${((piece=="-") ? " ":piece)}</span>`);
         }
+        x++;
     }
     return out;
 }
@@ -361,7 +417,7 @@ function display(board){
             out += " ├" + "─┼".repeat(7) + "─┤";
         }
         else if (i!=16){
-            out += (8.5 - i/2).toString() + "│" + chessify(board[2][Math.floor(i/2)]).join("│") + "│"
+            out += (8.5 - i/2).toString() + "│" + chessify(board[2][Math.floor(i/2)], Math.floor(i/2), 2).join("│") + "│"
         }
         else{}
 
@@ -376,7 +432,7 @@ function display(board){
             out += " ├" + "─┼".repeat(7) + "─┤";
         }
         else if (i!=16){
-            out += (8.5 - i/2).toString() + "│" + chessify(board[5][Math.floor(i/2)]).join("│") + "│"
+            out += (8.5 - i/2).toString() + "│" + chessify(board[5][Math.floor(i/2)], Math.floor(i/2), 5).join("│") + "│"
         }
         else{}
 
@@ -397,7 +453,7 @@ function display(board){
             out += " ├" + "─┼".repeat(7) + "─┤";
         }
         else if (i!=16){
-            out += (8.5 - i/2).toString() + "│" + chessify(board[1][Math.floor(i/2)]).join("│") + "│"
+            out += (8.5 - i/2).toString() + "│" + chessify(board[1][Math.floor(i/2)], Math.floor(i/2), 1).join("│") + "│"
         }
         else{}
 
@@ -412,7 +468,7 @@ function display(board){
             out += " ├" + "─┼".repeat(7) + "─┤";
         }
         else if (i!=16){
-            out += (8.5 - i/2).toString() + "│" + chessify(board[0][Math.floor(i/2)]).join("│") + "│"
+            out += (8.5 - i/2).toString() + "│" + chessify(board[0][Math.floor(i/2)], Math.floor(i/2), 0).join("│") + "│"
         }
         else{}
 
@@ -427,7 +483,7 @@ function display(board){
             out += " ├" + "─┼".repeat(7) + "─┤";
         }
         else if (i!=16){
-            out += (8.5 - i/2).toString() + "│" + chessify(board[3][Math.floor(i/2)]).join("│") + "│"
+            out += (8.5 - i/2).toString() + "│" + chessify(board[3][Math.floor(i/2)], Math.floor(i/2), 3).join("│") + "│"
         }
         else{}
 
@@ -449,7 +505,7 @@ function display(board){
             out += " ├" + "─┼".repeat(7) + "─┤";
         }
         else if (i!=16){
-            out += (8.5 - i/2).toString() + "│" + chessify(board[4][Math.floor(i/2)]).join("│") + "│"
+            out += (8.5 - i/2).toString() + "│" + chessify(board[4][Math.floor(i/2)], Math.floor(i/2), 4).join("│") + "│"
         }
         else{}
 
@@ -467,4 +523,4 @@ document.getElementById("output").innerHTML = display(board);//JSON.stringify(bo
 // 36
 //214
 // 5
-}catch(e){alert(e.stack);}
+//}catch(e){alert(e.stack);}

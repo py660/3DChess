@@ -1,0 +1,38 @@
+{
+  "name": "3dchess",
+  "version": "1.0.0",
+  "description": "Chess on a Cube",
+  "homepage": "https://github.com/py660/3DChess#readme",
+  "bugs": {
+    "url": "https://github.com/py660/3DChess/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/py660/3DChess.git"
+  },
+  "license": "ISC",
+  "author": "py660",
+  "type": "module",
+  "main": "src/script.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "webpack -c webpack.config.js --mode production",
+    "continuousBuild": "webpack -c webpack.config.js --mode development -w"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "@types/three": "^0.183.1",
+    "ts-loader": "^9.5.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3",
+    "webpack": "^5.105.4",
+    "webpack-cli": "^7.0.0",
+    "webpack-dev-server": "^5.2.3"
+  },
+  "dependencies": {
+    "rxjs": "^7.8.2",
+    "stats.js": "^0.17.0",
+    "three": "^0.183.2"
+  },
+  "private": true
+}

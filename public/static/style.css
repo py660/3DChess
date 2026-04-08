@@ -1,0 +1,99 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,100..700;1,100..700&display=swap');
+body {
+    margin: 0;
+    padding: 25px;
+    font-family: "Roboto Mono", monospace;
+    font-optical-sizing: auto;
+    font-weight: normal;
+    font-style: normal;
+    color: #222222;
+}
+html, body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+}
+body > * {
+    position: absolute;
+}
+.blur {
+    backdrop-filter: blur(200px);
+    background-color: rgba(255, 255, 255, 0.4);
+    &.extra {
+        background-color: rgba(255, 255, 255, 0.8);
+    }
+}
+.gamewrapper {
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+}
+.wrapper {
+    h1 {
+        margin: 0;
+        padding: 10px;
+        border: 2px solid #dddddd;
+    }
+
+    p {
+        margin: 0;
+        padding: 10px;
+    }
+}
+.hudwrapper {
+    width: 300px;
+    height: 100px;
+    top: 0;
+    left: 0;
+    margin: 25px;
+    padding: 25px;
+    /*background-color: white;*/
+    /*border: solid 2px slategrey;*/
+    border-radius: 25px;
+    box-shadow: 0 0 5px grey;
+}
+.sidebarwrapper {
+    width: 400px;
+    /*height: 200px;*/
+    top: 0;
+    bottom: 0;
+    right: 0;
+    margin: 25px;
+    padding: 25px;
+    /*background-color: white;*/
+    /*border: solid 2px slategrey;*/
+    border-radius: 25px;
+    box-shadow: 0 0 5px grey;
+    overflow: auto;
+
+    .fixed {
+        position: sticky;
+        top: 0;
+    }
+
+    & .movelist {
+        overflow: auto;
+        /*margin-left: 15px;*/
+        counter-reset: fullmoves;
+        & .move {
+            &.black::marker {
+                content: '';
+            }
+            &.black {
+                margin-bottom: 10px;
+            }
+            &:not(.black)::marker {
+                counter-increment: fullmoves;
+                content: counter(fullmoves)'. ';
+            }
+            & .piece::after {
+                content: '@';
+            }
+            & .pos.starting::after {
+                content: ' \2192\ ';
+            }
+        }
+    }
+}

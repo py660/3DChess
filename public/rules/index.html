@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>3D Chess Rules</title>
+    <link rel="stylesheet" href="./rules.css">
+</head>
+<body>
+<h1>Welcome to 3DChess!</h1>
+<p>The premise of the game is just like normal chess,
+  which is to "checkmate" the king while protecting your
+  own king! ...Except, the rules are a bit different here.</p>
+<h2>Rule 1: Pawns cannot move <i>En Passant</i></h2>
+<p>We know this may be disappointing to some, but pawns can
+  only move forward (two squares on the first move) and capture
+  diagonally. Also, pawns promote on the top and bottom faces of
+  the cube, rather than the first and eight ranks of its sides.</p>
+<h2>Rule 2: Kings must be captured</h2>
+<p>To make things as straightforward as possible, and also to reduce
+  confusion with the already-complicated board, the opponent's king
+  must be captured in order for you to claim the point. As such, kings
+  may be moved into check (such dangerous moves are especially marked
+  by darker squares when previewing a piece's possible moves), and
+  normally-stalemated kings will be forced to move into check. However,
+  stalemate positions where the king is trapped by its own pieces and
+  cannot legally move anywhere, in check or not, then the position is
+  still a stalemate.</p>
+<h2>Rule 3: Knights cannot cross into new sides</h2>
+<p>The reason for this rule is that the movement pattern for knights
+  is ambiguous, and once a knight is able to cross two or more sides
+  (such as at a corner), then everything become confusing. One more
+  thing to note is that diagonally-moving pieces cannot move past a
+  corner, since that would place them on the edge of the board, where
+  two sides meet (and that's not a legal position).</p>
+<h2>Rule 4: Chess notation is in the form [SIDE][FILE][RANK]</h2>
+<p>There are six sides on a cube, each with unique colors corresponding
+  to that on a Rubik's cube. As such, the letter codes for each side are
+  as follows:
+  <ul>
+    <li>"o": Right (Orange)</li>
+    <li>"r": Left (Red)</li>
+    <li>"w": Up (White)</li>
+    <li>"y": Down (Yellow)</li>
+    <li>"g": Front (Green)</li>
+    <li>"b": Back (Blue)</li>
+  </ul>
+  If you ever get confused, just look at a Rubik's cube with the green side
+  facing forwards and the white side facing up.
+</p>
+</body>
+</html>

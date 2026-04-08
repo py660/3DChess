@@ -1,7 +1,7 @@
 # 3DChess
 Chess, reimagined.
 
-For the singleplayer demo, go to [https://py660.github.io/3DChess/](https://py660.github.io/3DChess/)
+**For the singleplayer demo, go to [https://py660.github.io/3DChess/](https://py660.github.io/3DChess/)**
 
 # Quickstart
 
@@ -12,6 +12,6 @@ cd 3DChess
 npm install
 npm run build
 
-# Only singleplayer is available right now!
+# Serve client (server not implemented yet!)
 npx serve ./public/ # or substitute your favorite webserver
 ```

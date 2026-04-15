@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>3D Chess Rules</title>
-    <link rel="stylesheet" href="./rules.css">
+    <link rel="stylesheet" href="rules.css">
 </head>
 <body>
 <h1>Welcome to 3DChess!</h1>
@@ -25,17 +25,19 @@
   in stalemate positions where the king is trapped by its own pieces and
   cannot legally move anywhere, in check or not, then the position is
   still a stalemate.</p>
-<h2>Rule 3: Knights cannot cross into new sides</h2>
+<h2>Rule 3: Pieces cannot move diagonally past corners</h2>
+<p>Particularly pertaining to diagonally-moving pieces, it's logically
+  impossible to move past a corner, since that would place said piece
+  on the edge of the board instead of a well-defined square (and that
+  wouldn't a legal position).</p>
+<h2>Rule 4: Knights move forward twice, turn, then move again</h2>
 <p>The reason for this rule is that the movement pattern for knights
-  is ambiguous, and once a knight is able to cross two or more sides
-  (such as at a corner), then everything become confusing. One more
-  thing to note is that diagonally-moving pieces cannot move past a
-  corner, since that would place them on the edge of the board instead
-  of a well-defined square (and that's not a legal position).</p>
-<h2>Rule 4: Chess notation is in the form [SIDE][FILE][RANK]</h2>
+  is potentially ambiguous, and once a knight is able to cross two or
+  more sides (such as at a corner), then everything become confusing.</p>
+<h2>Rule 5: Chess notation is in the form [SIDE][FILE][RANK]</h2>
 <p>There are six sides on a cube, each with unique colors corresponding
   to that on a Rubik's cube. As such, the letter codes for each side are
-  as follows:
+  as follows:</p>
   <ul>
     <li>"o": Right (Orange)</li>
     <li>"r": Left (Red)</li>
@@ -44,7 +46,7 @@
     <li>"g": Front (Green)</li>
     <li>"b": Back (Blue)</li>
   </ul>
-  If you ever get confused, just look at a Rubik's cube with the green side
+<p>If you ever get confused, just look at a Rubik's cube with the green side
   facing forwards and the white side facing up.
 </p>
 </body>

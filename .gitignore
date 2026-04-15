@@ -2,5 +2,5 @@ nohup.out
  node_modules/**
  node_modules
  .idea
- public/dist/**
- public/dist
+ client/public/dist/**
+ client/public/dist

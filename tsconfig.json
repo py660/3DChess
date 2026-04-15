@@ -9,5 +9,5 @@
     "outDir": "dist",
     "moduleResolution": "node16"
   },
-  "include": ["src"]
+  "include": ["src", "client/src"]
 }

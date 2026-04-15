@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import {Quaternion, Ray, Vector2, Vector3} from 'three';
-import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
-//import {TrackballControls} from "three/examples/jsm/controls/TrackballControls.js";
+// import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {TrackballControls} from './TrackballControls.js';
 import {STLLoader} from 'three/examples/jsm/loaders/STLLoader.js';
 import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 //import {Subject} from 'rxjs';
-import {StereoEffect} from 'three/examples/jsm/effects/StereoEffect.js';
+// import {StereoEffect} from 'three/examples/jsm/effects/StereoEffect.js';
 
 // import Stats from 'stats.js';
 // const stats = new Stats();
@@ -22,9 +22,11 @@ const PIECE_SCALE = 0.4 as const; // 2 * PIECE_SCALE = width of piece
 //const LOG_VECTOR_EPSILON = 5 as const; // VECTOR_EPSILON = 10E-(LOG_VECTOR_EPSILON)
 const VECTOR_EPSILON = 0.00001 as const; // Prevents floating point errors in vector equality
 const MAX_RECURSION = 385 as const; // Max number of times a piece can "chain" moves (e.g. rook moving 2x forward)
-const CLICK_DRAG_EPSILON = 50 as const; // How many pixels must a mouse move while pressed to count as a drag versus a click
-const FRAMERATE = 15 as const;
-const STARTING_POS = "pppppppp/8/8/8/8/8/8/PPPPPPPP|pppppppp/8/8/8/8/8/8/PPPPPPPP|rbbnnbbr/b6b/b6b/n3q2n/n2k3n/b6b/b6b/rbbnnbbr|RBBNNBBR/B6B/B6B/N2K3N/N3Q2N/B6B/B6B/RBBNNBBR|pppppppp/8/8/8/8/8/8/PPPPPPPP|pppppppp/8/8/8/8/8/8/PPPPPPPP w" as const;
+const CLICK_DRAG_EPSILON = 35 as const; // How many pixels must a mouse move while pressed to count as a drag versus a click
+const FRAMERATE = 10 as const;
+//const ROTATE_SPEED = 2 as const; // Speed of camera rotation
+const STARTING_POS = 'pppppppp/8/8/8/8/8/8/PPPPPPPP|pppppppp/8/8/8/8/8/8/PPPPPPPP|rbbnnbbr/b6b/b6b/n3q2n/n2k3n/b6b/b6b/rbbnnbbr|RBBNNBBR/B6B/B6B/N2K3N/N3Q2N/B6B/B6B/RBBNNBBR|pppppppp/8/8/8/8/8/8/PPPPPPPP|pppppppp/8/8/8/8/8/8/PPPPPPPP w' as const;
+// const STARTING_POS = 'krr5/8/8/8/1K6/8/8/8|8/8/8/8/8/8/8/8|8/8/8/8/8/8/8/8|8/8/8/8/8/8/8/8|8/8/8/8/8/8/8/8|8/8/8/8/8/8/8/8 w' as const;
 
 Vector3.prototype.equals = function (v) {
     if (VECTOR_EPSILON === undefined) {
@@ -138,7 +140,7 @@ const Direction = {
     ...DiagonalDirection
 } as const;
 type Direction = (typeof Direction)[keyof typeof Direction];
-const DeltaMove = Vector2;
+//const DeltaMove = Vector2;
 type DeltaMove = Vector2 | Direction; // General case of a piece translation, especially for potentially non-adjacent moves
 
 const SurfacePos = Vector2;
@@ -181,32 +183,32 @@ type UCIRank = (typeof UCIRank)[keyof typeof UCIRank];
 type UCIPos = `${UCISide}${UCIFile}${UCIRank}`;
 type UCIMove = string; // Too many combinations to encode in a type; UCIMove = UCIPos x2, like algebraic notation
 
-type FEN6Piece = "P" | "N" | "B" | "R" | "Q" | "K" | "p" | "n" | "b" | "r" | "q" | "k"
+type FEN6Piece = 'P' | 'N' | 'B' | 'R' | 'Q' | 'K' | 'p' | 'n' | 'b' | 'r' | 'q' | 'k'
 const FEN6Piece: Record<Category, Record<Color, FEN6Piece>> = {
-    [Category.Pawn]: {[Color.White]: "P", [Color.Black]: "p"},
-    [Category.Knight]: {[Color.White]: "N", [Color.Black]: "n"},
-    [Category.Bishop]: {[Color.White]: "B", [Color.Black]: "b"},
-    [Category.Rook]: {[Color.White]: "R", [Color.Black]: "r"},
-    [Category.Queen]: {[Color.White]: "Q", [Color.Black]: "q"},
-    [Category.King]: {[Color.White]: "K", [Color.Black]: "k"},
+    [Category.Pawn]: {[Color.White]: 'P', [Color.Black]: 'p'},
+    [Category.Knight]: {[Color.White]: 'N', [Color.Black]: 'n'},
+    [Category.Bishop]: {[Color.White]: 'B', [Color.Black]: 'b'},
+    [Category.Rook]: {[Color.White]: 'R', [Color.Black]: 'r'},
+    [Category.Queen]: {[Color.White]: 'Q', [Color.Black]: 'q'},
+    [Category.King]: {[Color.White]: 'K', [Color.Black]: 'k'},
 } as const;
 const ReverseFEN6Piece: Record<FEN6Piece, Variant> = {
-    "P": {category: Category.Pawn, color: Color.White},
-    "p": {category: Category.Pawn, color: Color.Black},
-    "N": {category: Category.Knight, color: Color.White},
-    "n": {category: Category.Knight, color: Color.Black},
-    "B": {category: Category.Bishop, color: Color.White},
-    "b": {category: Category.Bishop, color: Color.Black},
-    "R": {category: Category.Rook, color: Color.White},
-    "r": {category: Category.Rook, color: Color.Black},
-    "Q": {category: Category.Queen, color: Color.White},
-    "q": {category: Category.Queen, color: Color.Black},
-    "K": {category: Category.King, color: Color.White},
-    "k": {category: Category.King, color: Color.Black},
+    'P': {category: Category.Pawn, color: Color.White},
+    'p': {category: Category.Pawn, color: Color.Black},
+    'N': {category: Category.Knight, color: Color.White},
+    'n': {category: Category.Knight, color: Color.Black},
+    'B': {category: Category.Bishop, color: Color.White},
+    'b': {category: Category.Bishop, color: Color.Black},
+    'R': {category: Category.Rook, color: Color.White},
+    'r': {category: Category.Rook, color: Color.Black},
+    'Q': {category: Category.Queen, color: Color.White},
+    'q': {category: Category.Queen, color: Color.Black},
+    'K': {category: Category.King, color: Color.White},
+    'k': {category: Category.King, color: Color.Black},
 } as const;
 const FEN6Color: Record<Color, string> = {
-    [Color.White]: "w",
-    [Color.Black]: "b",
+    [Color.White]: 'w',
+    [Color.Black]: 'b',
 } as const;
 const ReverseFEN6Color = reverseRecord(FEN6Color);
 type FEN6Color = (typeof FEN6Color)[keyof typeof FEN6Color];
@@ -317,7 +319,7 @@ class Pos {
         return this.canSurfaceMove(move) || (isLikeDirection(move) && this.canStep(move as Direction))
     }
     move(move: DeltaMove) {
-        if (!this.canMove(move)) throw Error("Cannot move in such a direction! Please check with canMove first.");
+        if (!this.canMove(move)) throw Error('Cannot move in such a direction! Please check with canMove first.');
     }*/
 
     static getClosestSide(pos3: Vector3): Side {
@@ -342,7 +344,7 @@ class Pos {
         if (Math.abs(k.x - SQUARE_WIDTH * 4) > VECTOR_EPSILON
             || !(1 - VECTOR_EPSILON <= k.y && k.y <= 8 + VECTOR_EPSILON)
             || !(1 - VECTOR_EPSILON <= k.z && k.z <= 8 + VECTOR_EPSILON)) {
-            throw Error("Failed to express PosVec in rotated basis");
+            throw Error('Failed to express PosVec in rotated basis');
         }
 
         this.set({side: newSide, file: k.y, rank: k.z});
@@ -351,13 +353,13 @@ class Pos {
     }
 
     canSurfaceMove(move: DeltaMove): boolean {
-        //console.log("canSurfaceMove");
+        //console.log('canSurfaceMove');
         //console.log(this.side, this.file, this.rank, move);
         return (1 - VECTOR_EPSILON <= this.file + move.x && this.file + move.x <= 8 + VECTOR_EPSILON)
             && (1 - VECTOR_EPSILON <= this.rank + move.y && this.rank + move.y <= 8 + VECTOR_EPSILON);
     }
     surfaceMove(move: DeltaMove) {
-        if (!this.canSurfaceMove(move)) throw Error("Surface-bound move extends past edge of side!");
+        if (!this.canSurfaceMove(move)) throw Error('Surface-bound move extends past edge of side!');
         this.surfacePos.add(move);
     }
     canCross(move: DeltaMove): boolean {
@@ -416,9 +418,10 @@ class Pos {
         if (this.canSurfaceMove(move)) {
             this.surfaceMove(move);
             return move;
-        } else {
+        }
+        else {
             if (this.canCross(move)) return this.cross(move);
-            throw Error("Can neither surfaceMove nor cross!")
+            throw Error('Can neither surfaceMove nor cross!')
         }
     }
 
@@ -426,7 +429,7 @@ class Pos {
         return `${UCISide[this.side]}${UCIFile[this.file]}${UCIRank[this.rank]}`;
     }
     set uci(uciPos: UCIPos) {
-        if (uciPos.length != 3) throw Error("UCIPos has invalid length!");
+        if (uciPos.length != 3) throw Error('UCIPos has invalid length!');
         this.side = ReverseUCISide[uciPos[0]];
         this.file = ReverseUCIFile[uciPos[1]];
         this.rank = ReverseUCIRank[uciPos[2]];
@@ -470,7 +473,7 @@ class Move {
         return `${this.from.uci}${this.to.uci}`;
     }
     set uci(uciMove: UCIMove) {
-        if (uciMove.length != 6) throw Error("UCIPos has invalid length!");
+        if (uciMove.length != 6) throw Error('UCIPos has invalid length!');
         this.from.uci = uciMove.slice(0, 3);
         this.to.uci = uciMove.slice(3);
     }
@@ -536,129 +539,65 @@ const MotionRestriction = {
 } as const;
 type MotionRestriction = (typeof MotionRestriction)[keyof typeof MotionRestriction];
 type MotionVerdict = { invalid: boolean, halt: boolean };
-// move - Where to go (direction is a one-square-long move)
+// move - Where to go (direction is a one-square-long move; individual DeltaMoves are executed in order to constitute a move)
 // repeat - How many times can the piece can jump according to the aforementioned move; default = 1; -1 means infinite
 // restrictions - Limitations on the piece
-type MotionRange = Array<{ move: DeltaMove, repeat?: number, restrictions?: Array<MotionRestriction> }>;
+type MotionRange = Array<{ move: Array<DeltaMove>, repeat?: number, restrictions?: Array<MotionRestriction> }>;
 const MotionRanges: Record<Category, MotionRange> = {
     [Category.Pawn]: [
-        {move: Direction.Up, repeat: 2, restrictions: [MotionRestriction.FirstMove, MotionRestriction.NoCapture, MotionRestriction.NoPhase, MotionRestriction.White]},
-        {move: Direction.Up, restrictions: [MotionRestriction.NoCapture, MotionRestriction.White]}, // Allow promotion, aka entering the top/bottom sides
-        {move: Direction.UpRight, restrictions: [MotionRestriction.CaptureOtherColor, MotionRestriction.White]},
-        {move: Direction.UpLeft, restrictions: [MotionRestriction.CaptureOtherColor, MotionRestriction.White]},
+        {move: [Direction.Up], repeat: 2, restrictions: [MotionRestriction.FirstMove, MotionRestriction.NoCapture, MotionRestriction.NoPhase, MotionRestriction.White]},
+        {move: [Direction.Up], restrictions: [MotionRestriction.NoCapture, MotionRestriction.White]}, // Allow promotion, aka entering the top/bottom sides
+        {move: [Direction.UpRight], restrictions: [MotionRestriction.CaptureOtherColor, MotionRestriction.White]},
+        {move: [Direction.UpLeft], restrictions: [MotionRestriction.CaptureOtherColor, MotionRestriction.White]},
 
-        {move: Direction.Down, repeat: 2, restrictions: [MotionRestriction.FirstMove, MotionRestriction.NoCapture, MotionRestriction.NoPhase, MotionRestriction.Black]},
-        {move: Direction.Down, restrictions: [MotionRestriction.NoCapture, MotionRestriction.Black]},
-        {move: Direction.DownRight, restrictions: [MotionRestriction.CaptureOtherColor, MotionRestriction.Black]},
-        {move: Direction.DownLeft, restrictions: [MotionRestriction.CaptureOtherColor, MotionRestriction.Black]}
+        {move: [Direction.Down], repeat: 2, restrictions: [MotionRestriction.FirstMove, MotionRestriction.NoCapture, MotionRestriction.NoPhase, MotionRestriction.Black]},
+        {move: [Direction.Down], restrictions: [MotionRestriction.NoCapture, MotionRestriction.Black]},
+        {move: [Direction.DownRight], restrictions: [MotionRestriction.CaptureOtherColor, MotionRestriction.Black]},
+        {move: [Direction.DownLeft], restrictions: [MotionRestriction.CaptureOtherColor, MotionRestriction.Black]}
     ],
     [Category.Knight]: [
-        {move: new DeltaMove(1, 2), restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoCross]},
-        {move: new DeltaMove(-1, 2), restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoCross]},
-        {move: new DeltaMove(1, -2), restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoCross]},
-        {move: new DeltaMove(-1, -2), restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoCross]},
-        {move: new DeltaMove(2, 1), restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoCross]},
-        {move: new DeltaMove(-2, 1), restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoCross]},
-        {move: new DeltaMove(2, -1), restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoCross]},
-        {move: new DeltaMove(-2, -1), restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoCross]}
+        {move: [Direction.Up, Direction.Up, Direction.Left], restrictions: [MotionRestriction.NoCaptureOwnColor]},
+        {move: [Direction.Up, Direction.Up, Direction.Right], restrictions: [MotionRestriction.NoCaptureOwnColor]},
+        {move: [Direction.Down, Direction.Down, Direction.Left], restrictions: [MotionRestriction.NoCaptureOwnColor]},
+        {move: [Direction.Down, Direction.Down, Direction.Right], restrictions: [MotionRestriction.NoCaptureOwnColor]},
+        {move: [Direction.Right, Direction.Right, Direction.Up], restrictions: [MotionRestriction.NoCaptureOwnColor]},
+        {move: [Direction.Right, Direction.Right, Direction.Down], restrictions: [MotionRestriction.NoCaptureOwnColor]},
+        {move: [Direction.Left, Direction.Left, Direction.Up], restrictions: [MotionRestriction.NoCaptureOwnColor]},
+        {move: [Direction.Left, Direction.Left, Direction.Down], restrictions: [MotionRestriction.NoCaptureOwnColor]}
     ],
     [Category.Bishop]: [
-        {
-            move: Direction.UpRight,
-            repeat: -1,
-            restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]
-        },
-        {
-            move: Direction.UpLeft,
-            repeat: -1,
-            restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]
-        },
-        {
-            move: Direction.DownRight,
-            repeat: -1,
-            restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]
-        },
-        {
-            move: Direction.DownLeft,
-            repeat: -1,
-            restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]
-        }
+        {move: [Direction.UpRight], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
+        {move: [Direction.UpLeft], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
+        {move: [Direction.DownRight], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
+        {move: [Direction.DownLeft], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]}
     ],
     [Category.Rook]: [
-        {
-            move: Direction.Up,
-            repeat: -1,
-            restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]
-        },
-        {
-            move: Direction.Down,
-            repeat: -1,
-            restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]
-        },
-        {
-            move: Direction.Right,
-            repeat: -1,
-            restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]
-        },
-        {
-            move: Direction.Left,
-            repeat: -1,
-            restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]
-        }
+        {move: [Direction.Up], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
+        {move: [Direction.Down], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
+        {move: [Direction.Right], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
+        {move: [Direction.Left], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]}
     ],
     [Category.Queen]: [
-        {
-            move: Direction.Up,
-            repeat: -1,
-            restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]
-        },
-        {
-            move: Direction.Down,
-            repeat: -1,
-            restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]
-        },
-        {
-            move: Direction.Right,
-            repeat: -1,
-            restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]
-        },
-        {
-            move: Direction.Left,
-            repeat: -1,
-            restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]
-        },
+        {move: [Direction.UpRight], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
+        {move: [Direction.UpLeft], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
+        {move: [Direction.DownRight], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
+        {move: [Direction.DownLeft], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
 
-        {
-            move: Direction.UpRight,
-            repeat: -1,
-            restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]
-        },
-        {
-            move: Direction.UpLeft,
-            repeat: -1,
-            restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]
-        },
-        {
-            move: Direction.DownRight,
-            repeat: -1,
-            restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]
-        },
-        {
-            move: Direction.DownLeft,
-            repeat: -1,
-            restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]
-        }
+        {move: [Direction.Up], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
+        {move: [Direction.Down], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
+        {move: [Direction.Right], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
+        {move: [Direction.Left], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]}
     ],
     [Category.King]: [
-        {move: Direction.Up, restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
-        {move: Direction.Down, restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
-        {move: Direction.Right, restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
-        {move: Direction.Left, restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
+        {move: [Direction.Up], restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
+        {move: [Direction.Down], restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
+        {move: [Direction.Right], restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
+        {move: [Direction.Left], restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
 
-        {move: Direction.UpRight, restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
-        {move: Direction.UpLeft, restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
-        {move: Direction.DownRight, restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
-        {move: Direction.DownLeft, restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]}
+        {move: [Direction.UpRight], restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
+        {move: [Direction.UpLeft], restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
+        {move: [Direction.DownRight], restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
+        {move: [Direction.DownLeft], restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]}
     ]
 } as const;
 
@@ -742,54 +681,81 @@ const StandardChessRules: ChessRules = {
     enumeratePossibleMoves(board: Board, piece: Piece, pos: Pos, ignore?: Array<MotionRestriction>, avoid?: Array<MotionRestriction>, mustHave?: Array<MotionRestriction>): Array<Pos> {
         let moves: Array<Pos> = [];
         for (let range of MotionRanges[piece.variant.category]) {
-            let move = range.move;
+            let moveSequence = [...range.move];
+            let verdict: MotionVerdict = {invalid: false, halt: false};
             const tempPos = (new Pos(pos.side, pos.surfacePos));
             let restrictions = range.restrictions || [];
-            if (ignore) restrictions = restrictions.filter((e)=>!ignore.includes(e))
+            if (ignore) restrictions = restrictions.filter((e) => !ignore.includes(e))
             if ((avoid && avoid.some(restrictions.includes.bind(restrictions)))
                 || (mustHave && !mustHave.some(restrictions.includes.bind(restrictions)))) {
-                //console.log("continuing", avoid, restrictions);
+                //console.log('continuing', avoid, restrictions);
                 continue;
             }
             const repeat = range.repeat != undefined ? (range.repeat > 0 ? range.repeat : MAX_RECURSION) : 1;
             //console.log(range.repeat, repeat);
 
             //let toAdd: Array<Pos> = [];
-            let seen: Array<Pos> = [];
-            for (let i=0; i < repeat; i++) {
-                //console.log(pos.surfacePos, tempPos.surfacePos, range, i);
-                const verdict = restrictions
-                    .map((restriction) => this.isRestrictionLegal(board, piece, tempPos, move, restriction))
-                    .reduce((prev, e) =>
-                            (Object.fromEntries(
-                                Object.entries(prev).map(
-                                    ([key, value]) =>
-                                        [key, value || e[key as keyof MotionVerdict]]
-                                )
-                            ) as MotionVerdict)
-                        , {invalid: false, halt: false});
-                //console.log(tempPos.surfacePos, move, verdict);
+            let seen: Array<Pos> = [new Pos(tempPos.side, tempPos.surfacePos)];
+            for (let j = 0; j < repeat; j++) {
+                let flag = false;
+                for (let i=0; i<moveSequence.length; i++) {
+                    //console.log(pos.surfacePos, tempPos.surfacePos, range, i);
+                    verdict = restrictions
+                        .map((restriction) => this.isRestrictionLegal(board, piece, tempPos, moveSequence[i], restriction))
+                        .reduce((prev, e) =>
+                                (Object.fromEntries(
+                                    Object.entries(prev).map(
+                                        ([key, value]) =>
+                                            [key, value || e[key as keyof MotionVerdict]]
+                                    )
+                                ) as MotionVerdict)
+                            , {invalid: false, halt: false});
+                    //console.log(tempPos.surfacePos, moveSequence, verdict);
 
-                seen.push(new Pos(tempPos.side, tempPos.surfacePos));
-                if (verdict.invalid && verdict.halt) {
+                    if (!tempPos.canSlide(moveSequence[i]) || (verdict.invalid && verdict.halt)) {
+                        flag = true;
+                        break;
+                    }
+                    let sv1 = SideVecs[tempPos.side];
+                    // console.log(verdict);
+                    // console.log(moveSequence[i], tempPos.side, tempPos.surfacePos, "before");
+                    moveSequence[i] = tempPos.slide(moveSequence[i]);
+                    let sv2 = SideVecs[tempPos.side];
+
+                    //board.highlight(tempPos);
+                    // console.log(moveSequence[i], tempPos.side, tempPos.surfacePos);
+                    // debugger;
+
+                    let quaternion = (new Quaternion()).setFromUnitVectors(sv1.norm.clone().normalize(), sv2.norm.clone().normalize());
+                    for (let k=i+1; k<moveSequence.length; k++) {
+                        let delta3 = (sv1.file.clone()).multiplyScalar(moveSequence[k].x)
+                            .add((sv1.rank.clone()).multiplyScalar(moveSequence[k].y))
+                            .applyQuaternion(quaternion);
+                        moveSequence[k] = new Vector2(delta3.dot(sv2.file), delta3.dot(sv2.rank));
+                    }
+                }
+                if (flag) {
+                    //console.log(2);
+                    //console.log(tempPos, moveSequence, j);
+                    //throw Error();
                     break;
                 }
-                move = tempPos.slide(move);
-                //if (tempPos.equals(new Pos(Side.Right, 6, 6))) console.log(move, moves, verdict)
-                //console.log("before", tempPos.surfacePos, "after", tempPos)
+                //console.log(verdict, tempPos);
+                //debugger;
+
                 if (seen.some(e => tempPos.equals(e))) {
                     break;
                 }
                 if (!verdict.invalid) {
                     if (!moves.some(e => tempPos.equals(e))) {
-                        //console.log('hi')
+                        //console.log('push');
                         moves.push(new Pos(tempPos.side, tempPos.surfacePos));
                     }
                 }
-                //console.log("by")
                 if (verdict.halt) {
                     break;
                 }
+                seen.push(new Pos(tempPos.side, tempPos.surfacePos));
             }
         }
         return moves;
@@ -898,7 +864,7 @@ class Piece {
      */
     _slide(move: DeltaMove): DeltaMove {
         let out = this.pos.slide(move);
-        //console.log("afterwards:", this.pos)
+        //console.log('afterwards:', this.pos)
         this.graphics.setPos(this.pos);
         return out;
     }
@@ -929,7 +895,7 @@ class Annotation {
 }
 
 class AnnotationGroup {
-    #annotations: Array<Annotation>
+    readonly #annotations: Array<Annotation>
 
     constructor(annotations: Array<Annotation>) {
         this.#annotations = annotations;
@@ -966,7 +932,7 @@ class Board {
     meshBoard: Map<number, Piece | Annotation | Board> = new Map();
     royalPieces: Array<Piece> = [];
     rules: ChessRules = StandardChessRules; // TODO: Add game variants
-    possibleMovesCache: Map<Pos, AnnotationGroup> = new Map(); // TODO: Add cacheing
+    possibleMovesCache: Map<Piece, Array<Pos>> = new Map(); // TODO: Add cacheing
 
     constructor(graphicsConfig: GraphicsConfig) {
         this.graphics = new BoardGraphics(graphicsConfig);
@@ -1008,7 +974,7 @@ class Board {
         this.graphics.add(piece.graphics);
     }
     getPiece(pos: Pos): [AnyPos, AnyPiece] {
-        const kv = [...this.board].filter(([key, value]) => pos.equals(key)).pop();
+        const kv = [...this.board].filter(([key]) => pos.equals(key)).pop();
         if (kv) return kv;
         return [undefined, undefined];
     }
@@ -1023,9 +989,9 @@ class Board {
             }
             this.delPiece(newPos);
             this.board.set(newPos, v);
-            //console.log("predelete", this.board.get(k), k.surfacePos);
+            //console.log('predelete', this.board.get(k), k.surfacePos);
             this.board.delete(k);
-            //console.log("deleted", this.board.get(k));
+            //console.log('deleted', this.board.get(k));
             v.pos = newPos;
             this.recalculateAllPossibleMoves();
             //console.log(v.pos.surfacePos);
@@ -1059,7 +1025,7 @@ class Board {
 
     getAnnotationGroup(groupPos: Pos) {
         const kv = [...this.annotationBoard].filter(
-            ([key, value]) =>
+            ([key]) =>
                 /*groupPos === key
                 || (groupPos instanceof Pos && key instanceof Pos && */groupPos.equals(key)/*)*/
         ).pop();
@@ -1078,7 +1044,7 @@ class Board {
     }
     _addExternalAnnotation(groupPos: Pos, annotation: Annotation) {
         const kv = this.getAnnotationGroup(groupPos);
-        //console.log("kv", kv);
+        //console.log('kv', kv);
         if (kv[1]) kv[1].addAnnotation(annotation);
         else this.annotationBoard.set(groupPos, new AnnotationGroup([annotation]));
         this.meshBoard.set(annotation.graphics.object.id, annotation);
@@ -1095,7 +1061,7 @@ class Board {
             return;
             //}
         }
-        throw Error("No annotationGroup at Pos!");
+        throw Error('No annotationGroup at Pos!');
     }
     delAllAnnotations(groupPos: Pos) {
         const kv = this.getAnnotationGroup(groupPos);
@@ -1103,7 +1069,7 @@ class Board {
             // @ts-ignore kv[1] is NOT undefined because I checked already (see previous line)
             kv[1].annotations.forEach(annotation => {kv[1].del(annotation); this.graphics.del(annotation.graphics)});
         }
-        else throw Error("No annotationGroup at Pos!");
+        else throw Error('No annotationGroup at Pos!');
     }
 
     /**
@@ -1113,8 +1079,8 @@ class Board {
      */
     showPossibleMoves(pos1: Pos, prospective?: boolean) {
         const [pos, piece] = this.getPiece(pos1);
-        if (!pos || !piece) throw Error("No piece at Pos!");
-        let destinations = this.rules.enumeratePossibleMoves(this, piece, pos);
+        if (!pos || !piece) throw Error('No piece at Pos!');
+        let destinations = this.enumeratePossibleMoves(pos);
         for (let destination of destinations) {
             if (prospective) {
                 this.addAnnotation(pos, destination, AnnotationVariant.ProspectiveMove);
@@ -1130,7 +1096,7 @@ class Board {
     }
     hidePossibleMoves(pos1: Pos) {
         const [pos, annotationGroup] = this.getAnnotationGroup(pos1);
-        if (!pos || !annotationGroup) return; //throw Error("No annotationGroup at Pos!");
+        if (!pos || !annotationGroup) return; //throw Error('No annotationGroup at Pos!');
         for (let annotation of annotationGroup.annotations.slice()) {
             //console.log(annotation);
             if (annotation.variant == AnnotationVariant.PossibleMove
@@ -1154,6 +1120,7 @@ class Board {
         }
     }
     recalculateAllPossibleMoves() {
+        this.possibleMovesCache.clear();
         for (let pos of this.annotationBoard.keys()) {
             this.recalculatePossibleMoves(pos);
         }
@@ -1265,8 +1232,10 @@ class Board {
      */
     enumeratePossibleMoves(piecePos: Pos) {
         const [pos, piece] = this.getPiece(piecePos);
-        if (!pos || !piece) throw Error("No piece at Pos!");
-        return this.rules.enumeratePossibleMoves(this, piece, pos);
+        if (!pos || !piece) throw Error('No piece at Pos!');
+        let res = this.possibleMovesCache.get(piece) || this.rules.enumeratePossibleMoves(this, piece, pos);
+        this.possibleMovesCache.set(piece, res);
+        return res;
     }
 
     /**
@@ -1281,7 +1250,7 @@ class Board {
 
     get fen6(): FEN6Board {
         let pos = new Pos();
-        let out = "";
+        let out = '';
         for (let side of Object.values(Side)) {
             for (let rank = 8; rank >= 1; rank--) {
                 for (let file = 1; file <= 8; file++) {
@@ -1291,13 +1260,13 @@ class Board {
                         out += FEN6Piece[piece.variant.category][piece.variant.color];
                     }
                     else {
-                        if (!out.at(-1) || isNaN(Number(out.at(-1)))) out += "1";
+                        if (!out.at(-1) || isNaN(Number(out.at(-1)))) out += '1';
                         else out = out.slice(0, -1) + (Number(out.at(-1)!)+1).toString();
                     }
                 }
-                out += "/"
+                out += '/'
             }
-            out += "|"
+            out += '|'
         }
         return out;
     }
@@ -1305,9 +1274,9 @@ class Board {
         this.delAllPieces();
         let pos = new Pos();
         pos.side = 0;
-        for (let fenSide of fenBoard.split("|")) {
+        for (let fenSide of fenBoard.split('|')) {
             pos.rank = 8
-            for (let fenRow of fenSide.split("/")) {
+            for (let fenRow of fenSide.split('/')) {
                 pos.file = 1;
                 for (let fenChar of fenRow) {
                     if (isNaN(Number(fenChar))) {
@@ -1405,7 +1374,7 @@ class Game {
         if (!this.board.getPiece(pos)[0]) {
             return this.board.addPiece(pos, variant);
         }
-        throw Error("Cannot add a new piece on top of an existing piece!")
+        throw Error('Cannot add a new piece on top of an existing piece!')
     }
     getPiece(pos: Pos) {
         return this.board.getPiece(pos)[1];
@@ -1418,11 +1387,11 @@ class Game {
         if (this.recentMove) this.board.hideRecentMove(this.recentMove);
         this.unselect();
         if (!this.isPossibleMove(move)) { // At this point, we're just providing detailed error messages
-            if (this.getGameState() != GameState.Running) throw Error("Pieces cannot be moved on a completed (gameOver-ed) board!");
-            else if (!this.getPiece(move.from)) throw Error("No piece at (starting) Pos!");
-            else if (this.getPiece(move.from)!.variant.color != this.activeColor) throw Error("Cannot move out of turn!")
-            else if (!this.board.isPossibleMove(move)) throw Error("Not a possible move!");
-            else throw Error("(Generic) not a possible move at this time!")
+            if (this.getGameState() != GameState.Running) throw Error('Pieces cannot be moved on a completed (gameOver-ed) board!');
+            else if (!this.getPiece(move.from)) throw Error('No piece at (starting) Pos!');
+            else if (this.getPiece(move.from)!.variant.color != this.activeColor) throw Error('Cannot move out of turn!')
+            else if (!this.board.isPossibleMove(move)) throw Error('Not a possible move!');
+            else throw Error('(Generic) not a possible move at this time!')
         }
         else this.board.move(move);
         this.recentMove = move;
@@ -1440,7 +1409,7 @@ class Game {
     }
     canMove(piecePos: Pos) {
         const piece = this.getPiece(piecePos);
-        if (!piece) throw Error("No piece at Pos!");
+        if (!piece) throw Error('No piece at Pos!');
         return piece.variant.color == this.activeColor && (!!this.board.enumeratePossibleMoves(piece.pos));
     }
     showPossibleMoves(piecePos: Pos) {
@@ -1479,8 +1448,8 @@ class Game {
     /**
      * Looks at a point on the board
      */
-    focus(targetPos: Pos) {
-        this.graphics.lookAt(targetPos);
+    focus(targetPos: Pos) { // TODO: Add notification for when an off-screen Pos is focused
+        //this.graphics.lookAt(targetPos);
     }
     setPerspective(color: Color) {
         this.graphics.setPerspective(ColorPerspectives[color]);
@@ -1490,8 +1459,8 @@ class Game {
         return `${this.board.fen6} ${FEN6Color[this.activeColor]}`;
     }
     set fen6(fenState: FEN6State) {
-        let split = fenState.split(" ");
-        if (split.length != 2) throw Error("Invalid FEN6State!");
+        let split = fenState.split(' ');
+        if (split.length != 2) throw Error('Invalid FEN6State!');
         let [fenBoard, fenColor]: [FEN6Board, FEN6Color] = <[string, string]>split;
         this.activeColor = ReverseFEN6Color[fenColor];
         this.board.fen6 = fenBoard;
@@ -1565,7 +1534,7 @@ class Controller {
             dests = this.game.enumeratePossibleMoves(piece.pos);
             dest = randChoice(dests);
             if (!dest || !piece.alive) {
-                console.log("Done!");
+                console.log('Done!');
                 clearInterval(interval);
                 return;
             }
@@ -1573,7 +1542,7 @@ class Controller {
 
             let oppdest = randChoice(this.game.enumeratePossibleMoves(piece3.pos));
             if (!oppdest || !piece3.alive) {
-                console.log("Done!");
+                console.log('Done!');
                 clearInterval(interval);
                 return;
             }
@@ -1588,71 +1557,6 @@ class Controller {
         this.game.focus(new Pos(Side.Front, 6, 7));
     }
 
-    /**
-     * Click handler
-     * @param logical - The logical object managing the object
-     * @param pos - The Pos of the object (relevant when `logical instanceof Board`)
-     */
-    onClick(logical: Board | Piece | Annotation, pos: Pos) {
-        let move: Move;
-        // console.log(this.game.selected);
-        // if (this.game.selected) {
-        //     console.log(pos)
-        // }
-        //console.log(this.game.selected, pos, this.game.isPossibleMove(new Move(this.game.selected!, pos)));
-        if (this.game.selected
-            && this.game.getPiece(this.game.selected)
-            && this.game.isPossibleMove(move = new Move(this.game.getPiece(this.game.selected)!, pos))) {
-            this.game.move(move);
-            this.game.setPerspective(this.game.activeColor);
-            this.game.focus(move.to);
-        }
-        else {
-            this.game.hideAllPossibleMoves();
-            this.game.unhighlightAll();
-            let samePiece = false;
-            if (this.game.selected) {
-                samePiece = this.game.selected.equals(pos);
-                this.game.unselect();
-            }
-
-            if (!samePiece) {
-                let piece = this.game.getPiece(pos);
-                //console.log(piece);
-                if (piece != undefined) {
-                    this.game.select(pos);
-                }
-            }
-            //
-            // if (!this.game.selected) {
-            //     console.log(1)
-            //     let piece = this.game.getPiece(pos);
-            //     //console.log(piece);
-            //     if (piece != undefined) {
-            //         if (piece.variant.color == this.game.activeColor) this.game.select(pos);
-            //         else this.game.showPossibleMoves(pos);
-            //     }
-            // }
-            //
-            // if (this.game.selected && this.game.selected.equals(pos)) {
-            //     console.log(2)
-            //     this.game.unselect();
-            // }
-            // if (this.game.selected && !this.game.selected.equals(pos)) {
-            //     console.log(3);
-            //     this.game.unselect();
-            //     let piece = this.game.getPiece(pos);
-            //     this.game.hideAllPossibleMoves();
-            //     if (piece != undefined) {
-            //         if (piece.variant.color == this.game.activeColor) this.game.select(pos);
-            //         else this.game.showPossibleMoves(pos);
-            //     }
-            // }
-        }
-    }
-    onHover(logical: Board | Piece | Annotation, pos: Pos) {
-
-    }
     update() {
         //console.log(this.graphics);
         this.graphics.update();
@@ -1715,7 +1619,7 @@ class PieceGraphics {
         this.setVariant(variant);
     }
     setPos(pos: Pos) {
-        ////console.log("setting pos", pos);
+        ////console.log('setting pos', pos);
         //window.debug = this;
         //window.debug1 = pos;
         //window.debug2 = BaseVector
@@ -1775,11 +1679,11 @@ class BoardGraphics {
 }
 
 class GameGraphics {
-    scene!: THREE.Scene // These are all defined in various helper functions that are called in constructor
+    scene!: THREE.Scene // These get initialized IMMEDIATELY AFTER in GraphicsManager
     camera!: THREE.PerspectiveCamera
     renderer!: THREE.WebGLRenderer
     bounds!: DOMRect
-    controls!: OrbitControls
+    controls!: TrackballControls
     envTexture?: THREE.Texture
     bgTexture?: THREE.Texture
     config: GraphicsConfig
@@ -1819,10 +1723,28 @@ class GameGraphics {
         this.camera.far = 25;
         //this.camera.aspect = window.innerWidth / window.innerHeight;
 
-        this.renderer = new THREE.WebGLRenderer({antialias: true, powerPreference: "high-performance"});
+        this.renderer = new THREE.WebGLRenderer({antialias: true, powerPreference: 'high-performance'});
         //this.effect = new StereoEffect(this.renderer);
         this.renderer.setPixelRatio(window.devicePixelRatio);
         //this.renderer.setSize(window.innerWidth, window.innerHeight);
+
+        this.controls = new TrackballControls(this.camera);
+        this.controls.staticMoving = true;
+        this.controls.noPan = true;
+        this.controls.rotateSpeed = 5;
+        this.controls.zoomSpeed = 1.5;
+        this.controls.minDistance = 8;
+        this.controls.maxDistance = 20;
+        this.controls.mouseButtons = {
+            LEFT: THREE.MOUSE.ROTATE,
+            MIDDLE: THREE.MOUSE.DOLLY,
+            RIGHT: null
+        }
+        // this.controls.keys = { LEFT: 'a', RIGHT: 'd', UP: 'w', BOTTOM: 's' }
+        //this.controls.listenToKeyEvents(window);
+        //this.controls.connect(window);
+
+        //this.controls.maxPolarAngle = Math.PI;
 
         const ambientLight = new THREE.AmbientLight(0xffffff, 4);
         this.scene.add(ambientLight);
@@ -1832,23 +1754,6 @@ class GameGraphics {
         //light.lookAt(this.camera.position.clone().negate());
         //this.camera.add(light);
         //this.scene.add(this.camera);
-
-        this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-        this.controls.enableDamping = false;
-        this.controls.enablePan = false;
-        this.controls.minDistance = 8;
-        this.controls.maxDistance = 20;
-        this.controls.mouseButtons = {
-            LEFT: THREE.MOUSE.ROTATE,
-            MIDDLE: THREE.MOUSE.DOLLY,
-            RIGHT: null
-        }
-        //this.controls.keys = { LEFT: "a", RIGHT: "d", UP: "w", BOTTOM: "s" }
-        this.controls.listenToKeyEvents(window);
-
-        this.controls.maxPolarAngle = Math.PI;
-
-        this.controls.addEventListener("change", this.animateOnce.bind(this));
 
         //this.scene.add(new THREE.AxesHelper(50))
 
@@ -1878,14 +1783,14 @@ class GameGraphics {
     }
     generateBoardConfig(): BoardConfig {
         const geometry = new THREE.BoxGeometry(SQUARE_WIDTH*8, SQUARE_WIDTH*8, SQUARE_WIDTH*8);
-        const texture = new THREE.TextureLoader().load("static/board.png");
+        const texture = new THREE.TextureLoader().load('static/board.png');
         texture.colorSpace = THREE.SRGBColorSpace;
         texture.magFilter = THREE.NearestFilter;
         let materialConfig: THREE.MeshPhysicalMaterialParameters= {
             reflectivity: 1,
             metalness: 0.0,
             roughness: 0.2,
-            //specular: "white",
+            //specular: 'white',
             opacity: 1,
             transparent: false,
             //transmission: 0.2,
@@ -1894,7 +1799,7 @@ class GameGraphics {
             map: texture
         }
         if (this.envTexture) materialConfig.envMap = this.envTexture;
-        const colors: Array<THREE.Color | string | number> = ["orange", "red", "white", "yellow", "green", "teal"]
+        const colors: Array<THREE.Color | string | number> = ['orange', 'red', 'white', 'yellow', 'green', 'teal']
         const materials = colors.map(color => new THREE.MeshPhysicalMaterial({color, ...materialConfig}));
         return {template: new THREE.Mesh(geometry, materials)};
     }
@@ -1902,8 +1807,8 @@ class GameGraphics {
         const materialConfig: THREE.MeshPhysicalMaterialParameters = {
             envMap: this.envTexture,
             reflectivity: 1,
-            metalness: 0.0,
-            roughness: 0.5,
+            metalness: 0.5,
+            roughness: 0.2,
             //opacity: 1.0,
             transparent: false,
             //transmission: 0.99
@@ -1912,9 +1817,7 @@ class GameGraphics {
         }
         const whiteMaterial = new THREE.MeshPhysicalMaterial({
             ...materialConfig,
-            color: 0xdddddd,
-            metalness: 0.5,
-            roughness: 0.2
+            color: 0xc2b99b
         });
         const blackMaterial = new THREE.MeshPhysicalMaterial({
             ...materialConfig,
@@ -1981,14 +1884,14 @@ class GameGraphics {
             ...materialConfig,
             opacity: 0.6,
             transparent: true,
-            color: new THREE.Color("green")
+            color: new THREE.Color('green')
         });
         selectedPieceMaterial.side = THREE.DoubleSide;
         const checkMaterial = new THREE.MeshPhysicalMaterial({
             ...materialConfig,
             opacity: 0.6,
             transparent: true,
-            color: new THREE.Color("red")
+            color: new THREE.Color('red')
         });
         const possibleMoveMaterial = new THREE.MeshPhysicalMaterial({
             ...materialConfig,
@@ -2003,7 +1906,7 @@ class GameGraphics {
         const highlightMaterial = new THREE.MeshPhysicalMaterial({
             ...materialConfig,
             //opacity: 0.9,
-            color: new THREE.Color("orange")
+            color: new THREE.Color('orange')
         });
         const dangerousPossibleMoveMaterial = new THREE.MeshPhysicalMaterial({
             ...materialConfig,
@@ -2013,7 +1916,7 @@ class GameGraphics {
         const prospectiveMoveMaterial = new THREE.MeshPhysicalMaterial({
             ...materialConfig,
             opacity: 0.9,
-            color: new THREE.Color("lightgrey")
+            color: new THREE.Color('lightgrey')
         })
 
         const recentMoveDepth = SQUARE_WIDTH*0.03;
@@ -2039,9 +1942,10 @@ class GameGraphics {
         selectedPieceGeometry.rotateX(Math.PI / 2);
         selectedPieceGeometry.translate(0, 0, selectedPieceOffset + selectedPieceDepth/2);
 
-        const highlightDepth = SQUARE_WIDTH*0.06;
+        const highlightDepth = SQUARE_WIDTH*0.061;
         const highlightWidth = SQUARE_WIDTH*0.9
-        const highlightGeometry = new THREE.CylinderGeometry(highlightWidth, highlightWidth, highlightDepth);
+        const highlightGeometry = new THREE.CylinderGeometry(highlightWidth/2, highlightWidth/2, highlightDepth);
+        highlightGeometry.rotateX(Math.PI / 2);
         highlightGeometry.translate(0, 0, highlightDepth/2);
 
         const dangerousPossibleMoveDepth = SQUARE_WIDTH*0.06;
@@ -2067,27 +1971,38 @@ class GameGraphics {
         templates[AnnotationVariant.ProspectiveMove] = new THREE.Mesh(prospectiveMoveGeometry, prospectiveMoveMaterial);
         return {templates: templates as Record<AnnotationVariant, THREE.Mesh>}
     }
+    /**
+     * To be called AFTER renderer.domElement is appended to the document tree
+     */
+    connectControls() {
+        this.controls.connect(this.renderer.domElement);
+        this.controls.handleResize();
+        // @ts-ignore
+        this.controls.addEventListener('redraw', this.animateOnce.bind(this), {passive: true, capture: true});
+    }
 
     addBoard(boardGraphics: BoardGraphics) {
         this.scene.add(boardGraphics.object);
     }
 
-    lookAt(targetPos: Pos) {
-        let ray = new Ray(BaseVector.Zero, targetPos.posvec.origin.clone().normalize());
-        let azimuthal = Math.atan2(ray.direction.x, ray.direction.z);
-        let polar = Math.acos(ray.direction.y);
-        this.controls.rotateUp(this.controls.getPolarAngle() - polar);
-        this.controls.rotateLeft(this.controls.getAzimuthalAngle() - azimuthal);
-    }
-    setPerspective(perspectiveCoefficient: ColorPerspective) {
-        this.camera.up.setY(perspectiveCoefficient);
-        //console.log(this.camera.up);
-        this.controls.rotateSpeed = perspectiveCoefficient;
-        this.controls.update();
+    // lookAt(targetPos: Pos) {
+    //     let ray = new Ray(BaseVector.Zero, targetPos.posvec.origin.clone().normalize());
+    //     let azimuthal = Math.atan2(ray.direction.x, ray.direction.z);
+    //     let polar = Math.acos(ray.direction.y);
+    //     this.controls.rotateUp(this.controls.getPolarAngle() - polar);
+    //     this.controls.rotateLeft(this.controls.getAzimuthalAngle() - azimuthal);
+    // }
+    setPerspective(perspectiveCoefficient: ColorPerspective) { // TODO: See other note about Game::focus
+        // this.camera.up.setY(perspectiveCoefficient);
+        // console.log(this.camera.up);
+        // this.controls.rotateSpeed = ROTATE_SPEED * perspectiveCoefficient;
+        //this.controls.update();
     }
 
-    _animateOnce(dt?: number) { // TODO: Add dt support
+    _animateOnce(dt?: number) {
+        // TODO: Add dt support
         // stats.begin();
+        //this.controls.update();
         this.renderer.domElement.dispatchEvent(this.updateEvent);
         this.renderer.render(this.scene, this.camera);
         // stats.end();
@@ -2108,6 +2023,7 @@ class GameGraphics {
         this.camera.aspect = this.bounds.width / this.bounds.height;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(this.bounds.width, this.bounds.height);
+        if (this.controls.domElement) this.controls.handleResize();
         this.animateOnce();
     }
     getIntersectedObjects(e: MouseEvent | PointerEvent) {
@@ -2122,12 +2038,12 @@ class GraphicsManager {
     controller: Controller
     graphics: GameGraphics
 
-    gameWrapper: HTMLElement = document.getElementById("game_wrapper")!; // Parent of rendererElement
-    hudStatusBar: HTMLElement = document.getElementById("hud_statusbar")!; // Shows whose move it is
-    dialog: HTMLDialogElement = document.getElementById("dialog") as HTMLDialogElement;
-    dialogStatusBar: HTMLElement = document.getElementById("dialog_statusbar")!;
-    dialogPlayAgain: HTMLButtonElement = document.getElementById("dialog_playagain") as HTMLButtonElement;
-    sidebarMoveList: HTMLElement = document.getElementById("sidebar_movelist")!;
+    gameWrapper: HTMLElement = document.getElementById('game_wrapper')!; // Parent of rendererElement
+    hudStatusBar: HTMLElement = document.getElementById('hud_statusbar')!; // Shows whose move it is
+    dialog: HTMLDialogElement = document.getElementById('dialog') as HTMLDialogElement;
+    dialogStatusBar: HTMLElement = document.getElementById('dialog_statusbar')!;
+    dialogPlayAgain: HTMLButtonElement = document.getElementById('dialog_playagain') as HTMLButtonElement;
+    sidebarMoveList: HTMLElement = document.getElementById('sidebar_movelist')!;
 
     #lastClickLocation: Vector2 = BaseVector.Zero2.clone();
     #lastLastClickLocation: Vector2 = BaseVector.Zero2.clone();
@@ -2140,6 +2056,7 @@ class GraphicsManager {
         this.rendererElement = this.graphics.renderer.domElement;
 
         this.configureRendererElement();
+        this.graphics.connectControls();
         this.configureEventListeners();
     }
     configureRendererElement() {
@@ -2153,7 +2070,7 @@ class GraphicsManager {
         window.addEventListener('mousedown', this.onMouseDown.bind(this));
         window.addEventListener('mousemove', this.onMouseMove.bind(this));
         window.addEventListener('click', this.onMouseClick.bind(this));
-        this.graphics.renderer.domElement.addEventListener('update', this.controller.update.bind(this.controller));
+        //this.graphics.renderer.domElement.addEventListener('update', this.controller.update.bind(this.controller));
         this.dialogPlayAgain.addEventListener('click', () => {
             this.dialog.close();
             this.controller.newGame();
@@ -2177,10 +2094,10 @@ class GraphicsManager {
         for (let intersection of intersected) {
             const logical = this.controller.getLogicalObjectFromMesh(intersection.object);
             if (logical instanceof Piece || logical instanceof Annotation) {
-                this.controller.onHover(logical, logical.pos);
+                //this.controller.onHover(logical, logical.pos);
             }
             else if (logical instanceof Board) {
-                this.controller.onHover(logical, logical.graphics.solveSurfacePos(intersection.point));
+                //this.controller.onHover(logical, logical.graphics.solveSurfacePos(intersection.point));
             }
             if (logical != undefined) {
                 this.setCursor(true);
@@ -2196,11 +2113,11 @@ class GraphicsManager {
         for (let intersection of intersected) {
             const logical = this.controller.getLogicalObjectFromMesh(intersection.object);
             if (logical instanceof Piece || logical instanceof Annotation) {
-                this.controller.onClick(logical, logical.pos);
+                //this.controller.onClick(logical, logical.pos);
                 return;
             }
             else if (logical instanceof Board) {
-                this.controller.onClick(logical, logical.graphics.solveSurfacePos(intersection.point));
+                //this.controller.onClick(logical, logical.graphics.solveSurfacePos(intersection.point));
                 return;
             }
         }
@@ -2264,6 +2181,6 @@ class GraphicsManager {
 
 let controller = new Controller();
 //controller.beginTestRoutine();
-//let startingPos = "rnbrrbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBRRBNR|rnbrrbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBRRBNR|8/8/8/3k4/4q3/8/8/8|8/8/8/4K3/3Q4/8/8/8|rnbrrbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBRRBNR|rnbrrbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBRRBNR w";
+//let startingPos = 'rnbrrbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBRRBNR|rnbrrbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBRRBNR|8/8/8/3k4/4q3/8/8/8|8/8/8/4K3/3Q4/8/8/8|rnbrrbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBRRBNR|rnbrrbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBRRBNR w';
 controller.newGame();
 controller.animateForever();

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {Quaternion, Ray, Vector2, Vector3} from 'three';
+import {Quaternion, Ray, Timer, Vector2, Vector3} from 'three';
 // import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {TrackballControls} from './TrackballControls.js';
 import {STLLoader} from 'three/examples/jsm/loaders/STLLoader.js';
@@ -25,8 +25,8 @@ const MAX_RECURSION = 385 as const; // Max number of times a piece can "chain" m
 const CLICK_DRAG_EPSILON = 35 as const; // How many pixels must a mouse move while pressed to count as a drag versus a click
 const FRAMERATE = 10 as const;
 //const ROTATE_SPEED = 2 as const; // Speed of camera rotation
-const STARTING_POS = 'pppppppp/8/8/8/8/8/8/PPPPPPPP|pppppppp/8/8/8/8/8/8/PPPPPPPP|rbbnnbbr/b6b/b6b/n3q2n/n2k3n/b6b/b6b/rbbnnbbr|RBBNNBBR/B6B/B6B/N2K3N/N3Q2N/B6B/B6B/RBBNNBBR|pppppppp/8/8/8/8/8/8/PPPPPPPP|pppppppp/8/8/8/8/8/8/PPPPPPPP w' as const;
-// const STARTING_POS = 'krr5/8/8/8/1K6/8/8/8|8/8/8/8/8/8/8/8|8/8/8/8/8/8/8/8|8/8/8/8/8/8/8/8|8/8/8/8/8/8/8/8|8/8/8/8/8/8/8/8 w' as const;
+const STARTING_POS = 'pppppppp/8/8/8/8/8/8/PPPPPPPP|pppppppp/8/8/8/8/8/8/PPPPPPPP|rbbnnbbr/b6b/b6b/n3q2n/n2k3n/b6b/b6b/rbbnnbbr|RBBNNBBR/B6B/B6B/N2K3N/N3Q2N/B6B/B6B/RBBNNBBR|pppppppp/8/8/8/8/8/8/PPPPPPPP|pppppppp/8/8/8/8/8/8/PPPPPPPP:w' as const;
+// const STARTING_POS = 'krr5/8/8/8/1K6/8/8/8|8/8/8/8/8/8/8/8|8/8/8/8/8/8/8/8|8/8/8/8/8/8/8/8|8/8/8/8/8/8/8/8|8/8/8/8/8/8/8/8:w' as const;
 
 Vector3.prototype.equals = function (v) {
     if (VECTOR_EPSILON === undefined) {
@@ -215,7 +215,7 @@ type FEN6Color = (typeof FEN6Color)[keyof typeof FEN6Color];
 /**
  * In order: Right (orange), Left (red), Top (white), Bottom (yellow), Front (green), Back (blue)
  * For each: Normal FEN of that side's board
- * Separated by: [SPACE]
+ * Separated by ":"
  */
 type FEN6Board = string;
 /**
@@ -781,14 +781,27 @@ class PieceObserver {
     }
     afterThisMove(board: Board, piece: Piece) {
     }
+    afterThisAdded(board: Board, piece: Piece) {
+    }
     beforeOtherMove(board: Board, piece: Piece) {
     }
     afterOtherMove(board: Board, piece: Piece) {
+    }
+    afterOtherAdded(board: Board, piece: Piece) {
     }
 }
 class PawnObserver extends PieceObserver {
     afterThisMove(board: Board, piece: Piece) {
         piece.moved = true;
+        if (piece.pos.side == Side.Top || piece.pos.side == Side.Bottom) {
+            piece.moved = false;
+            piece.setVariant({category: Category.Queen, color: piece.variant.color});
+        }
+    }
+    afterThisAdded(board: Board, piece: Piece) {
+        if (piece.pos.rank != 1 && piece.pos.rank != 8) {
+            piece.moved = true;
+        }
         if (piece.pos.side == Side.Top || piece.pos.side == Side.Bottom) {
             piece.moved = false;
             piece.setVariant({category: Category.Queen, color: piece.variant.color});
@@ -812,6 +825,12 @@ class KingObserver extends PieceObserver {
     }
     afterOtherMove(board: Board, piece: Piece) {
         this.afterThisMove(board, piece);
+    }
+    afterThisAdded(board: Board, piece: Piece) {
+        this.afterThisMove(board, piece);
+    }
+    afterOtherAdded(board: Board, piece: Piece) {
+        this.afterThisMove
     }
 }
 const PieceObservers: Record<Category, PieceObserver> = {
@@ -972,6 +991,10 @@ class Board {
         this.recalculateAllPossibleMoves();
         this.meshBoard.set(piece.graphics.object.id, piece);
         this.graphics.add(piece.graphics);
+        for (let selectedPiece of this.board.values()) {
+            if (selectedPiece == piece) PieceObservers[selectedPiece.variant.category].afterOtherAdded(this, selectedPiece);
+            else PieceObservers[selectedPiece.variant.category].afterThisAdded(this, selectedPiece);
+        }
     }
     getPiece(pos: Pos): [AnyPos, AnyPiece] {
         const kv = [...this.board].filter(([key]) => pos.equals(key)).pop();
@@ -1266,9 +1289,10 @@ class Board {
                 }
                 out += '/'
             }
+            out = out.slice(0, -1); // Remove trailing delimiter
             out += '|'
         }
-        return out;
+        return out.slice(0, -1); // Remove trailing delimiter
     }
     set fen6(fenBoard: FEN6Board) {
         this.delAllPieces();
@@ -1334,7 +1358,7 @@ class Game {
     set activeColor(color: Color) {
         this.#activeColor = color;
         this.invalid = true;
-        this.setPerspective(this.#activeColor)
+        this.graphics.setPerspective(ColorPerspectives[this.#activeColor])
     }
     advanceActiveColor() {
         if (this.activeColor == Color.White) {
@@ -1447,20 +1471,29 @@ class Game {
 
     /**
      * Looks at a point on the board
+     * @deprecated
      */
     focus(targetPos: Pos) { // TODO: Add notification for when an off-screen Pos is focused
-        //this.graphics.lookAt(targetPos);
-    }
-    setPerspective(color: Color) {
-        this.graphics.setPerspective(ColorPerspectives[color]);
+        this.graphics.lookAt(targetPos);
     }
 
-    get fen6(): FEN6State {
-        return `${this.board.fen6} ${FEN6Color[this.activeColor]}`;
+    validateFen6(fenState: string): boolean {
+        let split = fenState.split(':');
+        if (split.length == 2
+            && Object.values(FEN6Color).includes(split[1])
+            && split[0].split('|').length == 6
+            && !split[0].split('|').some(
+                part => part.split('/').length != 8)
+        )
+            return true;
+        return false;
     }
-    set fen6(fenState: FEN6State) {
-        let split = fenState.split(' ');
-        if (split.length != 2) throw Error('Invalid FEN6State!');
+    get fen6(): FEN6State {
+        return `${this.board.fen6}:${FEN6Color[this.activeColor]}`;
+    }
+    set fen6(fenState: string) {
+        if (!this.validateFen6(fenState)) throw Error('Invalid FEN6State!');
+        let split = (fenState as FEN6State).split(':');
         let [fenBoard, fenColor]: [FEN6Board, FEN6Color] = <[string, string]>split;
         this.activeColor = ReverseFEN6Color[fenColor];
         this.board.fen6 = fenBoard;
@@ -1473,7 +1506,8 @@ class Controller {
 
     constructor() {
         this.game = new Game();
-        this.graphics = new GraphicsManager(this)
+        this.graphics = new GraphicsManager(this);
+        this.update();
     }
 
     /**
@@ -1486,6 +1520,7 @@ class Controller {
 
     loadPositionFromFEN(fenState: FEN6State) {
         this.game.fen6 = fenState;
+        this.update();
     }
     savePositionAsFEN(): FEN6State {
         return this.game.fen6;
@@ -1496,6 +1531,7 @@ class Controller {
     }
     clearMoveHistory() {
         this.game.clearMoveHistory();
+        this.update();
     }
     getActiveColor(): Color {
         return this.game.activeColor;
@@ -1555,11 +1591,80 @@ class Controller {
         this.clearMoveHistory();
         this.loadPositionFromFEN(STARTING_POS);
         this.game.focus(new Pos(Side.Front, 6, 7));
+        this.update();
+    }
+
+    /**
+     * Click handler
+     * @param logical - The logical object managing the object
+     * @param pos - The Pos of the object (relevant when `logical instanceof Board`)
+     */
+    onClick(logical: Board | Piece | Annotation, pos: Pos) {
+        let move: Move;
+        // console.log(this.game.selected);
+        // if (this.game.selected) {
+        //     console.log(pos)
+        // }
+        //console.log(this.game.selected, pos, this.game.isPossibleMove(new Move(this.game.selected!, pos)));
+        if (this.game.selected
+            && this.game.getPiece(this.game.selected)
+            && this.game.isPossibleMove(move = new Move(this.game.getPiece(this.game.selected)!, pos))) {
+            this.game.move(move);
+            this.update();
+            this.game.focus(move.to);
+        }
+        else {
+            this.game.hideAllPossibleMoves();
+            this.game.unhighlightAll();
+            let samePiece = false;
+            if (this.game.selected) {
+                samePiece = this.game.selected.equals(pos);
+                this.game.unselect();
+            }
+
+            if (!samePiece) {
+                let piece = this.game.getPiece(pos);
+                //console.log(piece);
+                if (piece != undefined) {
+                    this.game.select(pos);
+                }
+            }
+            //
+            // if (!this.game.selected) {
+            //     console.log(1)
+            //     let piece = this.game.getPiece(pos);
+            //     //console.log(piece);
+            //     if (piece != undefined) {
+            //         if (piece.variant.color == this.game.activeColor) this.game.select(pos);
+            //         else this.game.showPossibleMoves(pos);
+            //     }
+            // }
+            //
+            // if (this.game.selected && this.game.selected.equals(pos)) {
+            //     console.log(2)
+            //     this.game.unselect();
+            // }
+            // if (this.game.selected && !this.game.selected.equals(pos)) {
+            //     console.log(3);
+            //     this.game.unselect();
+            //     let piece = this.game.getPiece(pos);
+            //     this.game.hideAllPossibleMoves();
+            //     if (piece != undefined) {
+            //         if (piece.variant.color == this.game.activeColor) this.game.select(pos);
+            //         else this.game.showPossibleMoves(pos);
+            //     }
+            // }
+        }
+    }
+    onHover(logical: Board | Piece | Annotation, pos: Pos) {
+
     }
 
     update() {
-        //console.log(this.graphics);
-        this.graphics.update();
+        setTimeout(()=> {
+            //console.log(this.graphics);
+            this.graphics.update();
+        }, 0);
     }
 
     animateForever() {
@@ -1693,8 +1798,10 @@ class GameGraphics {
     //intersected: Array<THREE.Intersection> = [];
 
     updateEvent: Event = new CustomEvent('update');
+    timer!: Timer;
 
     constructor() {
+        this.createTimer();
         this.createScene();
         let boardConfig = this.generateBoardConfig();
         let pieceConfig = this.generatePieceConfig();
@@ -1971,6 +2078,11 @@ class GameGraphics {
         templates[AnnotationVariant.ProspectiveMove] = new THREE.Mesh(prospectiveMoveGeometry, prospectiveMoveMaterial);
         return {templates: templates as Record<AnnotationVariant, THREE.Mesh>}
     }
+    createTimer() {
+        this.timer = new Timer();
+        this.timer.connect(document);
+        this.timer.update();
+    }
     /**
      * To be called AFTER renderer.domElement is appended to the document tree
      */
@@ -1985,13 +2097,16 @@ class GameGraphics {
         this.scene.add(boardGraphics.object);
     }
 
-    // lookAt(targetPos: Pos) {
-    //     let ray = new Ray(BaseVector.Zero, targetPos.posvec.origin.clone().normalize());
-    //     let azimuthal = Math.atan2(ray.direction.x, ray.direction.z);
-    //     let polar = Math.acos(ray.direction.y);
-    //     this.controls.rotateUp(this.controls.getPolarAngle() - polar);
-    //     this.controls.rotateLeft(this.controls.getAzimuthalAngle() - azimuthal);
-    // }
+    /**
+     * @deprecated
+     */
+    lookAt(targetPos: Pos) {
+        // let ray = new Ray(BaseVector.Zero, targetPos.posvec.origin.clone().normalize());
+        // let azimuthal = Math.atan2(ray.direction.x, ray.direction.z);
+        // let polar = Math.acos(ray.direction.y);
+        // this.controls.rotateUp(this.controls.getPolarAngle() - polar);
+        // this.controls.rotateLeft(this.controls.getAzimuthalAngle() - azimuthal);
+    }
     setPerspective(perspectiveCoefficient: ColorPerspective) { // TODO: See other note about Game::focus
         // this.camera.up.setY(perspectiveCoefficient);
         // console.log(this.camera.up);
@@ -1999,10 +2114,12 @@ class GameGraphics {
         //this.controls.update();
     }
 
-    _animateOnce(dt?: number) {
+    _animateOnce() {
         // TODO: Add dt support
         // stats.begin();
         //this.controls.update();
+        let dt = this.timer.getDelta();
+        this.timer.update();
         this.renderer.domElement.dispatchEvent(this.updateEvent);
         this.renderer.render(this.scene, this.camera);
         // stats.end();
@@ -2044,11 +2161,14 @@ class GraphicsManager {
     dialogStatusBar: HTMLElement = document.getElementById('dialog_statusbar')!;
     dialogPlayAgain: HTMLButtonElement = document.getElementById('dialog_playagain') as HTMLButtonElement;
     sidebarMoveList: HTMLElement = document.getElementById('sidebar_movelist')!;
+    fen6Box: HTMLInputElement = document.getElementById('fen6box') as HTMLInputElement;
+    // TODO: Allow inputting PGN6s as well as FEN6s
 
     #lastClickLocation: Vector2 = BaseVector.Zero2.clone();
     #lastLastClickLocation: Vector2 = BaseVector.Zero2.clone();
     #dragDistance: number = 0;
     #dragging: boolean = false;
+    #lastClickTime: DOMHighResTimeStamp = performance.now();
 
     constructor(controller: Controller) {
         this.controller = controller;
@@ -2075,6 +2195,11 @@ class GraphicsManager {
             this.dialog.close();
             this.controller.newGame();
         });
+        this.fen6Box.addEventListener('blur', this.loadFen6.bind(this), {passive: true});
+        this.fen6Box.addEventListener(`focus`, this.fen6Box.select.bind(this.fen6Box), {passive: true});
+        this.fen6Box.addEventListener('keyup', (e) => {
+            if (e.key === "Enter") this.fen6Box.blur();
+            }, {passive: true});
     }
     onMouseDown(e: MouseEvent) {
         this.#lastClickLocation.set(e.clientX, e.clientY);
@@ -2094,10 +2219,10 @@ class GraphicsManager {
         for (let intersection of intersected) {
             const logical = this.controller.getLogicalObjectFromMesh(intersection.object);
             if (logical instanceof Piece || logical instanceof Annotation) {
-                //this.controller.onHover(logical, logical.pos);
+                this.controller.onHover(logical, logical.pos);
             }
             else if (logical instanceof Board) {
-                //this.controller.onHover(logical, logical.graphics.solveSurfacePos(intersection.point));
+                this.controller.onHover(logical, logical.graphics.solveSurfacePos(intersection.point));
             }
             if (logical != undefined) {
                 this.setCursor(true);
@@ -2108,19 +2233,22 @@ class GraphicsManager {
     }
     onMouseClick(e: MouseEvent) {
         if (this.#dragging) return;
+        if (performance.now() - this.#lastClickTime < 100) return;
+        this.#lastClickTime = performance.now();
         const intersected = this.graphics.getIntersectedObjects(e);
         //console.log(intersected);
         for (let intersection of intersected) {
             const logical = this.controller.getLogicalObjectFromMesh(intersection.object);
             if (logical instanceof Piece || logical instanceof Annotation) {
-                //this.controller.onClick(logical, logical.pos);
+                this.controller.onClick(logical, logical.pos);
                 return;
             }
             else if (logical instanceof Board) {
-                //this.controller.onClick(logical, logical.graphics.solveSurfacePos(intersection.point));
+                this.controller.onClick(logical, logical.graphics.solveSurfacePos(intersection.point));
                 return;
             }
         }
+        return false;
     }
     setCursor(enabled: boolean) {
         if (enabled) {
@@ -2170,9 +2298,24 @@ class GraphicsManager {
         else this.dialogStatusBar.innerText = 'White is victorious!';
         this.dialog.showModal();
     }
+    displayFen6() {
+        if (!document.querySelector(`#${this.fen6Box.id}:focus`)) this.fen6Box.value = this.controller.savePositionAsFEN();
+        this.fen6Box.classList.remove('invalid');
+    }
+    loadFen6() {
+        try {
+            this.controller.loadPositionFromFEN(this.fen6Box.value);
+            this.fen6Box.classList.remove('invalid');
+        }
+        catch (e) {
+            console.error("Invalid FEN inputted:", e);
+            this.fen6Box.classList.add('invalid');
+        }
+    }
     update() {
         this.updateMoveList();
         this.updateGameState();
+        this.displayFen6();
     }
 
 }

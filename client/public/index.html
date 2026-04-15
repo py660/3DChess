@@ -5,11 +5,16 @@
     <meta name="viewport" content="width=device-width">
     <title>3DChess</title>
     <link rel="stylesheet" href="static/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,100..700;1,100..700&display=swap">
 </head>
 <body>
-    <div id="game_wrapper" class="gamewrapper wrapper"></div>
+    <div id="game_wrapper" class="gamewrapper"></div>
     <div id="sidebar_wrapper" class="sidebarwrapper blur wrapper">
-        <h1 class="fixed extra blur">Pass and Play</h1>
+        <div class="fixed extra blur header">
+            <h1 class="content">Pass and Play</h1>
+            <input id="fen6box" class="databox" placeholder="FEN6" aria-label="Board position string">
+        </div>
         <ol id="sidebar_movelist" class="movelist">
             <li class="move white"><span class="piece">Q</span>@<span class="pos starting">ge4</span> &rarr; <span class="pos">og5</span></li>
             <li class="move black"><span class="piece">Q</span>@<span class="pos">ge4</span> &rarr; <span class="pos">og5</span></li>
@@ -17,8 +22,8 @@
         
     </div>
     <div id="hud_wrapper" class="hudwrapper blur wrapper">
-        <h1 id="hud_statusbar" class="blur">Your Move</h1>
-        <p>First time? Read the <a href="rules">rules</a>.</p>
+        <h1 id="hud_statusbar" class="blur header">Your Move</h1>
+        <p class="content">First time? Read the <a href="rules">rules</a>.</p>
     </div>
     <dialog id="dialog" class="dialog">
         <h1 id="dialog_statusbar"></h1>

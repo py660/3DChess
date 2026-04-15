@@ -13,11 +13,15 @@
   "license": "ISC",
   "author": "py660",
   "type": "module",
-  "main": "src/script.ts",
+  "main": "client/src/script.ts",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "webpack -c webpack.config.js --mode production",
-    "continuousBuild": "webpack -c webpack.config.js --mode development -w"
+    "build": "npm run buildServer && npm run buildClient",
+    "continuousBuild": "npm run continuousBuildServer & npm run continuousBuildClient",
+    "buildClient": "webpack -c webpack.client.js --mode production",
+    "continuousBuildClient": "webpack -c webpack.client.js --mode development -w",
+    "buildServer": "webpack -c webpack.server.js --mode production",
+    "continuousBuildServer": "webpack -c webpack.server.js --mode development -w"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
@@ -31,6 +35,7 @@
   },
   "dependencies": {
     "rxjs": "^7.8.2",
+    "socket.io": "^4.8.3",
     "stats.js": "^0.17.0",
     "three": "^0.183.2"
   },

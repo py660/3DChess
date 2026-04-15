@@ -9,7 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const config = {
-    entry: "./src/script.ts",
+    entry: "./client/src/script.ts",
     module: {
         rules: [
             {
@@ -24,7 +24,7 @@ const config = {
     },
     output: {
         filename: "main.js",
-        path: path.resolve(__dirname, "public", "dist"),
+        path: path.resolve(__dirname, "client", "public", "dist"),
     },
     devtool: process.env.NODE_ENV === 'production' ? false : [
         { type: "javascript", use: "source-map" },

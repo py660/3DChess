@@ -12,6 +12,6 @@ cd 3DChess
 npm install
 npm run build
 
-# Serve client (server not implemented yet!)
-npx serve ./public/ # or substitute your favorite webserver
+# Serve client; server not implemented yet!
+npx serve ./client/public/ # or substitute your favorite webserver
 ```

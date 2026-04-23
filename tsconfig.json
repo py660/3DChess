@@ -7,7 +7,20 @@
     "strict": true,
     "skipLibCheck": true,
     "outDir": "dist",
-    "moduleResolution": "node16"
+    "moduleResolution": "node16",
+    "declaration": true,
+    "paths": {
+      "logic": [
+        "./logic/src/index.ts"
+      ]
+    }
   },
-  "include": ["src", "client/src"]
+  "include": [
+    "client/src",
+    "server/src",
+    "logic/src"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }

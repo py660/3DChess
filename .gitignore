@@ -1,6 +1,12 @@
 nohup.out
- node_modules/**
- node_modules
- .idea
- client/public/dist/**
- client/public/dist
+node_modules/**
+node_modules
+.idea
+client/public/dist/**
+client/public/dist
+server/dist
+server/dist/**
+logic/dist
+logic/dist/**
+dist
+dist/**

@@ -1,10 +1,30 @@
 import * as THREE from 'three';
-import {Quaternion, Ray, Timer, Vector2, Vector3} from 'three';
-// import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {Vector2, Vector3} from 'three';
 import {TrackballControls} from './TrackballControls.js';
 import {STLLoader} from 'three/examples/jsm/loaders/STLLoader.js';
-import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-//import {Subject} from 'rxjs';
+import {
+    Annotation,
+    AnnotationVariant,
+    BaseVector,
+    Board,
+    Category,
+    Color,
+    FEN6Piece,
+    FEN6State,
+    Game,
+    GameState,
+    GameVariant,
+    Move,
+    Piece,
+    PieceVariant,
+    Pos,
+    Rulebook
+} from 'logic';
+
+// import {io} from 'socket.io-client';
+// import 'scheduler-polyfill';
+// import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+//import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 // import {StereoEffect} from 'three/examples/jsm/effects/StereoEffect.js';
 
 // import Stats from 'stats.js';
@@ -14,19 +34,25 @@ import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUti
 
 const loader = new STLLoader();
 
-// region Utils
-
 const SQUARE_WIDTH = 1 as const; // One square on the board is this many units wide
-//const SQUARE_WIDTH*4 = 4 as const; // Minimum distance from the origin to any side (4 * SQUARE_WIDTH)
 const PIECE_SCALE = 0.4 as const; // 2 * PIECE_SCALE = width of piece
+const CLICK_DRAG_EPSILON = 35 as const; // How many pixels must a mouse move while pressed to count as a drag versus a click
+const FRAMERATE = 10 as const; // Framerate at rest (increases for smooth animation)
+
+type ColorPerspective = Vector3;
+const ColorPerspectives: Record<Color, ColorPerspective> = {
+    [Color.White]: BaseVector.Y,
+    [Color.Black]: BaseVector.Y.clone().multiplyScalar(-1),
+} as const;
+
+/*
+// region Old
+
 //const LOG_VECTOR_EPSILON = 5 as const; // VECTOR_EPSILON = 10E-(LOG_VECTOR_EPSILON)
 const VECTOR_EPSILON = 0.00001 as const; // Prevents floating point errors in vector equality
 const MAX_RECURSION = 385 as const; // Max number of times a piece can "chain" moves (e.g. rook moving 2x forward)
-const CLICK_DRAG_EPSILON = 35 as const; // How many pixels must a mouse move while pressed to count as a drag versus a click
-const FRAMERATE = 10 as const;
-//const ROTATE_SPEED = 2 as const; // Speed of camera rotation
-const STARTING_POS = 'pppppppp/8/8/8/8/8/8/PPPPPPPP|pppppppp/8/8/8/8/8/8/PPPPPPPP|rbbnnbbr/b6b/b6b/n3q2n/n2k3n/b6b/b6b/rbbnnbbr|RBBNNBBR/B6B/B6B/N2K3N/N3Q2N/B6B/B6B/RBBNNBBR|pppppppp/8/8/8/8/8/8/PPPPPPPP|pppppppp/8/8/8/8/8/8/PPPPPPPP:w' as const;
-// const STARTING_POS = 'krr5/8/8/8/1K6/8/8/8|8/8/8/8/8/8/8/8|8/8/8/8/8/8/8/8|8/8/8/8/8/8/8/8|8/8/8/8/8/8/8/8|8/8/8/8/8/8/8/8:w' as const;
+
+// region Utils
 
 Vector3.prototype.equals = function (v) {
     if (VECTOR_EPSILON === undefined) {
@@ -70,7 +96,7 @@ type Side = (typeof Side)[keyof typeof Side];
 //type Reverser<T extends Record<any, PropertyKey>> = { [P in keyof T as T[P]]: P }
 //const NormSides: Reverser<typeof SideNorms> = SideNorms;
 
-type SideVec /* aka. sv */ = { norm: Vector3, file: Vector3, rank: Vector3 } /*Norm, dir of ranks (right), dir of files (up)*/
+type SideVec /!* aka. sv *!/ = { norm: Vector3, file: Vector3, rank: Vector3 } /!*Norm, dir of ranks (right), dir of files (up)*!/
 const SideVecs: Record<Side, SideVec> = { // file: x+, rank: y+; imagine this vector being scaled to represent going to the k'th rank/file
     [Side.Right]: {norm: new Vector3(1, 0, 0), file: new Vector3(0, 0, -1), rank: new Vector3(0, 1, 0)},
     [Side.Left]: {norm: new Vector3(-1, 0, 0), file: new Vector3(0, 0, 1), rank: new Vector3(0, 1, 0)},
@@ -79,7 +105,7 @@ const SideVecs: Record<Side, SideVec> = { // file: x+, rank: y+; imagine this ve
     [Side.Top]: {norm: new Vector3(0, 1, 0), file: new Vector3(1, 0, 0), rank: new Vector3(0, 0, -1)},
     [Side.Bottom]: {norm: new Vector3(0, -1, 0), file: new Vector3(1, 0, 0), rank: new Vector3(0, 0, 1)}
 } as const;
-//type PosVec /* aka. pv */ = { pos: Vector3, vec: Vector3 };
+//type PosVec /!* aka. pv *!/ = { pos: Vector3, vec: Vector3 };
 
 type SideAdjacencyNode = { left: Side, right: Side, up: Side, down: Side };
 const SideAdjacencyGraph: Record<Side, SideAdjacencyNode> = {
@@ -109,7 +135,7 @@ const Color = {
     Black: 1
 } as const;
 type Color = (typeof Color)[keyof typeof Color];
-type Variant = {
+type PieceVariant = {
     category: Category,
     color: Color
 }
@@ -140,6 +166,8 @@ const Direction = {
     ...DiagonalDirection
 } as const;
 type Direction = (typeof Direction)[keyof typeof Direction];
+// @ts-ignore
+window.Direction = Direction; // TODO: DEBUG
 //const DeltaMove = Vector2;
 type DeltaMove = Vector2 | Direction; // General case of a piece translation, especially for potentially non-adjacent moves
 
@@ -181,10 +209,8 @@ const UCIRank: Record<number, string> = {
 const ReverseUCIRank = reverseRecord<number, string>(UCIRank);
 type UCIRank = (typeof UCIRank)[keyof typeof UCIRank];
 type UCIPos = `${UCISide}${UCIFile}${UCIRank}`;
-type UCIMove = string; // Too many combinations to encode in a type; UCIMove = UCIPos x2, like algebraic notation
-
-type FEN6Piece = 'P' | 'N' | 'B' | 'R' | 'Q' | 'K' | 'p' | 'n' | 'b' | 'r' | 'q' | 'k'
-const FEN6Piece: Record<Category, Record<Color, FEN6Piece>> = {
+type UCIPiece = 'P' | 'N' | 'B' | 'R' | 'Q' | 'K' | 'p' | 'n' | 'b' | 'r' | 'q' | 'k';
+const UCIPiece: Record<Category, Record<Color, UCIPiece>> = {
     [Category.Pawn]: {[Color.White]: 'P', [Color.Black]: 'p'},
     [Category.Knight]: {[Color.White]: 'N', [Color.Black]: 'n'},
     [Category.Bishop]: {[Color.White]: 'B', [Color.Black]: 'b'},
@@ -192,7 +218,7 @@ const FEN6Piece: Record<Category, Record<Color, FEN6Piece>> = {
     [Category.Queen]: {[Color.White]: 'Q', [Color.Black]: 'q'},
     [Category.King]: {[Color.White]: 'K', [Color.Black]: 'k'},
 } as const;
-const ReverseFEN6Piece: Record<FEN6Piece, Variant> = {
+const ReverseUCIPiece: Record<UCIPiece, PieceVariant> = {
     'P': {category: Category.Pawn, color: Color.White},
     'p': {category: Category.Pawn, color: Color.Black},
     'N': {category: Category.Knight, color: Color.White},
@@ -206,26 +232,31 @@ const ReverseFEN6Piece: Record<FEN6Piece, Variant> = {
     'K': {category: Category.King, color: Color.White},
     'k': {category: Category.King, color: Color.Black},
 } as const;
+type UCIMove = string; // Too many combinations to encode in a type; UCIMove = UCIPiece + UCIPos x2, like algebraic notation
+
+type FEN6Piece = UCIPiece;
+const FEN6Piece: Record<Category, Record<Color, FEN6Piece>> = UCIPiece;
+const ReverseFEN6Piece: Record<FEN6Piece, PieceVariant> = ReverseUCIPiece;
 const FEN6Color: Record<Color, string> = {
     [Color.White]: 'w',
     [Color.Black]: 'b',
 } as const;
 const ReverseFEN6Color = reverseRecord(FEN6Color);
 type FEN6Color = (typeof FEN6Color)[keyof typeof FEN6Color];
-/**
+/!**
  * In order: Right (orange), Left (red), Top (white), Bottom (yellow), Front (green), Back (blue)
  * For each: Normal FEN of that side's board
  * Separated by ":"
- */
+ *!/
 type FEN6Board = string;
-/**
+/!**
  * `FEN6Board`
  * [SPACE]
  * Active color: W=White to move, B=Black to move
- */
+ *!/
 type FEN6State = string;
 
-/*function isLikeDirection(move: DeltaMove) {
+/!*function isLikeDirection(move: DeltaMove) {
     return (-1 - VECTOR_EPSILON <= move.x && move.x <= 1 + VECTOR_EPSILON) && (-1 - VECTOR_EPSILON <= move.y && move.y <= 1 + VECTOR_EPSILON) && !(move.equals(BaseVector.Zero));
 }
 function isLikeCardinalDirection(move: DeltaMove) {
@@ -233,7 +264,7 @@ function isLikeCardinalDirection(move: DeltaMove) {
 }
 function isLikeDiagonalDirection(move: DeltaMove) {
     return isLikeDirection(move) && ((Math.abs(move.x) <= VECTOR_EPSILON) == (Math.abs(move.y) <= VECTOR_EPSILON));
-}*/
+}*!/
 
 class Pos {
     #side!: Side
@@ -243,24 +274,24 @@ class Pos {
     //#pos: Vector3 = new Vector3() // temp vec design
     //#_v2: Vector3 = new Vector3()
 
-    /**
+    /!**
      * @param side - One of the 6 faces of the cube (from the Side enum)
      * @param surfacePos - SurfacePos object encompassing file and rank
-     */
+     *!/
     constructor(side: Side, surfacePos: SurfacePos)
-    /**
+    /!**
      * Generates an invalid Pos for modification later on
-     */
+     *!/
     constructor()
-    /**
+    /!**
      * @param side - One of the 6 faces of the cube (from the Side enum)
      * @param file - Bounded by [1, 8]
      * @param rank - Bounded by [1, 8]
-     */
+     *!/
     constructor(side: Side, file: number, rank: number)
     constructor(side?: Side, fileOrSurfacePos?: SurfacePos | number, rank?: number) {
         if (side == undefined || fileOrSurfacePos == undefined) {
-            side = Side.Front;
+            side = Side.Right;
             fileOrSurfacePos = new SurfacePos(0, 0);
         }
         this.side = side;
@@ -299,28 +330,27 @@ class Pos {
     }
     set side(side: Side) {
         this.#side = side;
-        //this.#calculatePosVec();
+        // this.recalculatePosvec();
     }
     set file(file: number) {
         this.#surfacePos.x = Math.round(file);
-        //this.#calculatePosVec();
+        // this.recalculatePosvec();
     }
     set rank(rank: number) {
         this.#surfacePos.y = Math.round(rank);
-        //this.#calculatePosVec();
+        // this.recalculatePosvec();
     }
     set surfacePos(surfacePos: SurfacePos) {
         this.file = surfacePos.x; // let the individual setters deal with rounding
         this.rank = surfacePos.y;
-        //this.#calculatePosVec();
     }
 
-    /*canMove(move: DeltaMove): boolean {
+    /!*canMove(move: DeltaMove): boolean {
         return this.canSurfaceMove(move) || (isLikeDirection(move) && this.canStep(move as Direction))
     }
     move(move: DeltaMove) {
         if (!this.canMove(move)) throw Error('Cannot move in such a direction! Please check with canMove first.');
-    }*/
+    }*!/
 
     static getClosestSide(pos3: Vector3): Side {
         return Object.values(Side).map(
@@ -332,16 +362,16 @@ class Pos {
     setSurfacePosFromPos3(pos3: Vector3) {
         const newSide = Pos.getClosestSide(pos3);
         const newSv = SideVecs[newSide];
-        let k = pos3.applyMatrix3(new THREE.Matrix3().set(
+        let k = pos3.applyMatrix3(new Matrix3().set(
             newSv.norm.x, newSv.file.x, newSv.rank.x,
             newSv.norm.y, newSv.file.y, newSv.rank.y,
             newSv.norm.z, newSv.file.z, newSv.rank.z
         ).invert());
-        k.y += SQUARE_WIDTH * 9 / 2;
-        k.z += SQUARE_WIDTH * 9 / 2
+        k.y += 9 / 2;
+        k.z += 9 / 2
         k.round();
 
-        if (Math.abs(k.x - SQUARE_WIDTH * 4) > VECTOR_EPSILON
+        if (Math.abs(k.x - 4) > VECTOR_EPSILON
             || !(1 - VECTOR_EPSILON <= k.y && k.y <= 8 + VECTOR_EPSILON)
             || !(1 - VECTOR_EPSILON <= k.z && k.z <= 8 + VECTOR_EPSILON)) {
             throw Error('Failed to express PosVec in rotated basis');
@@ -443,9 +473,9 @@ class Pos {
     get posvec(): Ray {
         let sv = SideVecs[this.side];
         return this.#posvec.set(
-            sv.norm.clone().multiplyScalar(SQUARE_WIDTH * 4)
-                .add(sv.file.clone().multiplyScalar(this.file - SQUARE_WIDTH * 9 / 2))
-                .add(sv.rank.clone().multiplyScalar(this.rank - SQUARE_WIDTH * 9 / 2)),
+            sv.norm.clone().multiplyScalar(4)
+                .add(sv.file.clone().multiplyScalar(this.file - 9 / 2))
+                .add(sv.rank.clone().multiplyScalar(this.rank - 9 / 2)),
             sv.norm
         )
         // return {
@@ -512,6 +542,11 @@ type AnnotationVariant = (typeof AnnotationVariant)[keyof typeof AnnotationVaria
 
 //region Rules
 
+const GameVariant = {
+    Standard: 0
+} as const;
+type GameVariant = (typeof GameVariant)[keyof typeof GameVariant];
+
 const MotionRestriction = {
     // Piece cannot go past the edge of the board
     NoCross: 0,
@@ -530,8 +565,8 @@ const MotionRestriction = {
     NoPhaseOwnColor: 9,
     NoPhaseOtherColor: 10,
     // King-specific moves
-    /*NoRecieveCheck: 11,
-    // TODO: Decide if NoGiveCheck should be added or not*/
+    /!*NoRecieveCheck: 11,
+    // TODO: Decide if NoGiveCheck should be added or not*!/
     // Resolved: Do not allow the player to walk into check, but only end the game once the king is captured
     // Moves exclusive to a color (e.g. pawns moving in opposite directions)
     White: 12,
@@ -543,63 +578,7 @@ type MotionVerdict = { invalid: boolean, halt: boolean };
 // repeat - How many times can the piece can jump according to the aforementioned move; default = 1; -1 means infinite
 // restrictions - Limitations on the piece
 type MotionRange = Array<{ move: Array<DeltaMove>, repeat?: number, restrictions?: Array<MotionRestriction> }>;
-const MotionRanges: Record<Category, MotionRange> = {
-    [Category.Pawn]: [
-        {move: [Direction.Up], repeat: 2, restrictions: [MotionRestriction.FirstMove, MotionRestriction.NoCapture, MotionRestriction.NoPhase, MotionRestriction.White]},
-        {move: [Direction.Up], restrictions: [MotionRestriction.NoCapture, MotionRestriction.White]}, // Allow promotion, aka entering the top/bottom sides
-        {move: [Direction.UpRight], restrictions: [MotionRestriction.CaptureOtherColor, MotionRestriction.White]},
-        {move: [Direction.UpLeft], restrictions: [MotionRestriction.CaptureOtherColor, MotionRestriction.White]},
-
-        {move: [Direction.Down], repeat: 2, restrictions: [MotionRestriction.FirstMove, MotionRestriction.NoCapture, MotionRestriction.NoPhase, MotionRestriction.Black]},
-        {move: [Direction.Down], restrictions: [MotionRestriction.NoCapture, MotionRestriction.Black]},
-        {move: [Direction.DownRight], restrictions: [MotionRestriction.CaptureOtherColor, MotionRestriction.Black]},
-        {move: [Direction.DownLeft], restrictions: [MotionRestriction.CaptureOtherColor, MotionRestriction.Black]}
-    ],
-    [Category.Knight]: [
-        {move: [Direction.Up, Direction.Up, Direction.Left], restrictions: [MotionRestriction.NoCaptureOwnColor]},
-        {move: [Direction.Up, Direction.Up, Direction.Right], restrictions: [MotionRestriction.NoCaptureOwnColor]},
-        {move: [Direction.Down, Direction.Down, Direction.Left], restrictions: [MotionRestriction.NoCaptureOwnColor]},
-        {move: [Direction.Down, Direction.Down, Direction.Right], restrictions: [MotionRestriction.NoCaptureOwnColor]},
-        {move: [Direction.Right, Direction.Right, Direction.Up], restrictions: [MotionRestriction.NoCaptureOwnColor]},
-        {move: [Direction.Right, Direction.Right, Direction.Down], restrictions: [MotionRestriction.NoCaptureOwnColor]},
-        {move: [Direction.Left, Direction.Left, Direction.Up], restrictions: [MotionRestriction.NoCaptureOwnColor]},
-        {move: [Direction.Left, Direction.Left, Direction.Down], restrictions: [MotionRestriction.NoCaptureOwnColor]}
-    ],
-    [Category.Bishop]: [
-        {move: [Direction.UpRight], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
-        {move: [Direction.UpLeft], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
-        {move: [Direction.DownRight], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
-        {move: [Direction.DownLeft], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]}
-    ],
-    [Category.Rook]: [
-        {move: [Direction.Up], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
-        {move: [Direction.Down], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
-        {move: [Direction.Right], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
-        {move: [Direction.Left], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]}
-    ],
-    [Category.Queen]: [
-        {move: [Direction.UpRight], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
-        {move: [Direction.UpLeft], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
-        {move: [Direction.DownRight], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
-        {move: [Direction.DownLeft], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
-
-        {move: [Direction.Up], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
-        {move: [Direction.Down], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
-        {move: [Direction.Right], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
-        {move: [Direction.Left], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]}
-    ],
-    [Category.King]: [
-        {move: [Direction.Up], restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
-        {move: [Direction.Down], restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
-        {move: [Direction.Right], restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
-        {move: [Direction.Left], restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
-
-        {move: [Direction.UpRight], restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
-        {move: [Direction.UpLeft], restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
-        {move: [Direction.DownRight], restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
-        {move: [Direction.DownLeft], restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]}
-    ]
-} as const;
+type MotionRanges = Record<Category, MotionRange>;
 
 const GameState = {
     Running: 0,
@@ -610,172 +589,250 @@ type GameState = (typeof GameState)[keyof typeof GameState];
 
 interface ChessRules {
     isRestrictionLegal: (board: Board, piece: Piece, startingPos: Pos, move: DeltaMove, restriction: MotionRestriction) => MotionVerdict,
-    enumeratePossibleMoves: (board: Board, piece: Piece, pos: Pos, avoid?: Array<MotionRestriction>, mustHave?: Array<MotionRestriction>) => Array<Pos>,
-    isAttacked: (board: Board, piece: Piece, pos: Pos) => boolean
+    enumeratePossibleMoves: (board: Board, piece: Piece, startPos: Pos, avoid?: Array<MotionRestriction>, mustHave?: Array<MotionRestriction>) => Array<Pos>,
+    isAttacked: (board: Board, piece: Piece, pos: Pos) => boolean,
+    getGameState: (game: Game) => GameState,
+    motionRanges: MotionRanges,
+    startingFen6: FEN6State
     //isGameOver: (board: Board) => GameState
 }
-const StandardChessRules: ChessRules = {
-    isRestrictionLegal(board: Board, piece: Piece, startingPos: Pos, move: DeltaMove, restriction: MotionRestriction): MotionVerdict {
-        const newPos = new Pos(startingPos.side, startingPos.surfacePos);
-        if (!newPos.canSlide(move)) return {invalid: true, halt: true};
-        newPos.slide(move);
-        let kv = board.getPiece(newPos);
-        if (restriction == MotionRestriction.NoCross) {
-            if (!startingPos.canSurfaceMove(move)) return {invalid: true, halt: true};
-            else return {invalid: false, halt: false};
-        }
-        else if (restriction == MotionRestriction.FirstMove) {
-            if (piece.moved) return {invalid: true, halt: true};
-            else return {invalid: false, halt: false};
-        }
-        else if (restriction == MotionRestriction.Capture) {
-            if (!kv[1]) return {invalid: true, halt: false};
-            else return {invalid: false, halt: false};
-        }
-        else if (restriction == MotionRestriction.CaptureOtherColor) {
-            if (!kv[1] || kv[1].variant.color == piece.variant.color) return {invalid: true, halt: false};
-            else return {invalid: false, halt: false};
-        }
-        else if (restriction == MotionRestriction.CaptureOwnColor) {
-            if (!kv[1] || kv[1].variant.color == piece.variant.color) return {invalid: true, halt: false};
-            else return {invalid: false, halt: false};
-        }
-        else if (restriction == MotionRestriction.NoCapture) {
-            if (kv[1]) return {invalid: true, halt: false};
-            else return {invalid: false, halt: false};
-        }
-        else if (restriction == MotionRestriction.NoCaptureOwnColor) {
-            if (kv[1] && kv[1].variant.color == piece.variant.color) return {invalid: true, halt: false};
-            else return {invalid: false, halt: false};
-        }
-        else if (restriction == MotionRestriction.NoCaptureOtherColor) {
-            if (kv[1] && kv[1].variant.color != piece.variant.color) return {invalid: true, halt: false};
-            else return {invalid: false, halt: false};
-        }
-        else if (restriction == MotionRestriction.NoPhase) {
-            if (kv[1]) return {invalid: false, halt: true};
-            else return {invalid: false, halt: false};
-        }
-        else if (restriction == MotionRestriction.NoPhaseOwnColor) {
-            if (kv[1] && kv[1].variant.color == piece.variant.color) return {invalid: false, halt: true};
-            else return {invalid: false, halt: false};
-        }
-        else if (restriction == MotionRestriction.NoPhaseOtherColor) {
-            if (kv[1] && kv[1].variant.color != piece.variant.color) return {invalid: false, halt: true};
-            else return {invalid: false, halt: false};
-        }
-        /*else if (restriction == MotionRestriction.NoRecieveCheck) {
-            if (this.isAttacked(board, piece, newPos)) return {invalid: true, halt: false};
-            else return {invalid: false, halt: false};
-        }*/
-        else if (restriction == MotionRestriction.White) {
-            if (piece.variant.color != Color.White) return {invalid: true, halt: true};
-            else return {invalid: false, halt: false};
-        }
-        else if (restriction == MotionRestriction.Black) {
-            if (piece.variant.color != Color.Black) return {invalid: true, halt: true};
-            else return {invalid: false, halt: false};
-        }
-        return {invalid: true, halt: true};
-    },
-    enumeratePossibleMoves(board: Board, piece: Piece, pos: Pos, ignore?: Array<MotionRestriction>, avoid?: Array<MotionRestriction>, mustHave?: Array<MotionRestriction>): Array<Pos> {
-        let moves: Array<Pos> = [];
-        for (let range of MotionRanges[piece.variant.category]) {
-            let moveSequence = [...range.move];
-            let verdict: MotionVerdict = {invalid: false, halt: false};
-            const tempPos = (new Pos(pos.side, pos.surfacePos));
-            let restrictions = range.restrictions || [];
-            if (ignore) restrictions = restrictions.filter((e) => !ignore.includes(e))
-            if ((avoid && avoid.some(restrictions.includes.bind(restrictions)))
-                || (mustHave && !mustHave.some(restrictions.includes.bind(restrictions)))) {
-                //console.log('continuing', avoid, restrictions);
-                continue;
+
+type Rulebook = Record<GameVariant, ChessRules>;
+const Rulebook: Rulebook = {
+    [GameVariant.Standard]: {
+        isRestrictionLegal(board: Board, piece: Piece, startingPos: Pos, move: DeltaMove, restriction: MotionRestriction): MotionVerdict {
+            const newPos = new Pos(startingPos.side, startingPos.surfacePos);
+            if (!newPos.canSlide(move)) return {invalid: true, halt: true};
+            newPos.slide(move);
+            let kv = board.getPiece(newPos);
+            if (restriction == MotionRestriction.NoCross) {
+                if (!startingPos.canSurfaceMove(move)) return {invalid: true, halt: true};
+                else return {invalid: false, halt: false};
             }
-            const repeat = range.repeat != undefined ? (range.repeat > 0 ? range.repeat : MAX_RECURSION) : 1;
-            //console.log(range.repeat, repeat);
+            else if (restriction == MotionRestriction.FirstMove) {
+                if (piece.moved) return {invalid: true, halt: true};
+                else return {invalid: false, halt: false};
+            }
+            else if (restriction == MotionRestriction.Capture) {
+                if (!kv[1]) return {invalid: true, halt: false};
+                else return {invalid: false, halt: false};
+            }
+            else if (restriction == MotionRestriction.CaptureOtherColor) {
+                if (!kv[1] || kv[1].variant.color == piece.variant.color) return {invalid: true, halt: false};
+                else return {invalid: false, halt: false};
+            }
+            else if (restriction == MotionRestriction.CaptureOwnColor) {
+                if (!kv[1] || kv[1].variant.color == piece.variant.color) return {invalid: true, halt: false};
+                else return {invalid: false, halt: false};
+            }
+            else if (restriction == MotionRestriction.NoCapture) {
+                if (kv[1]) return {invalid: true, halt: false};
+                else return {invalid: false, halt: false};
+            }
+            else if (restriction == MotionRestriction.NoCaptureOwnColor) {
+                if (kv[1] && kv[1].variant.color == piece.variant.color) return {invalid: true, halt: false};
+                else return {invalid: false, halt: false};
+            }
+            else if (restriction == MotionRestriction.NoCaptureOtherColor) {
+                if (kv[1] && kv[1].variant.color != piece.variant.color) return {invalid: true, halt: false};
+                else return {invalid: false, halt: false};
+            }
+            else if (restriction == MotionRestriction.NoPhase) {
+                if (kv[1]) return {invalid: false, halt: true};
+                else return {invalid: false, halt: false};
+            }
+            else if (restriction == MotionRestriction.NoPhaseOwnColor) {
+                if (kv[1] && kv[1].variant.color == piece.variant.color) return {invalid: false, halt: true};
+                else return {invalid: false, halt: false};
+            }
+            else if (restriction == MotionRestriction.NoPhaseOtherColor) {
+                if (kv[1] && kv[1].variant.color != piece.variant.color) return {invalid: false, halt: true};
+                else return {invalid: false, halt: false};
+            }
+            /!*else if (restriction == MotionRestriction.NoRecieveCheck) {
+                if (this.isAttacked(board, piece, newPos)) return {invalid: true, halt: false};
+                else return {invalid: false, halt: false};
+            }*!/
+            else if (restriction == MotionRestriction.White) {
+                if (piece.variant.color != Color.White) return {invalid: true, halt: true};
+                else return {invalid: false, halt: false};
+            }
+            else if (restriction == MotionRestriction.Black) {
+                if (piece.variant.color != Color.Black) return {invalid: true, halt: true};
+                else return {invalid: false, halt: false};
+            }
+            return {invalid: true, halt: true};
+        },
+        enumeratePossibleMoves(board: Board, piece: Piece, pos: Pos, ignore?: Array<MotionRestriction>, avoid?: Array<MotionRestriction>, mustHave?: Array<MotionRestriction>): Array<Pos> {
+            let moves: Array<Pos> = [];
+            for (let range of this.motionRanges[piece.variant.category]) {
+                let moveSequence = [...range.move];
+                let verdict: MotionVerdict = {invalid: false, halt: false};
+                const tempPos = (new Pos(pos.side, pos.surfacePos));
+                let restrictions = range.restrictions || [];
+                if (ignore) restrictions = restrictions.filter((e) => !ignore.includes(e))
+                if ((avoid && avoid.some(restrictions.includes.bind(restrictions)))
+                    || (mustHave && !mustHave.some(restrictions.includes.bind(restrictions)))) {
+                    //console.log('continuing', avoid, restrictions);
+                    continue;
+                }
+                const repeat = range.repeat != undefined ? (range.repeat > 0 ? range.repeat : MAX_RECURSION) : 1;
+                //console.log(range.repeat, repeat);
 
-            //let toAdd: Array<Pos> = [];
-            let seen: Array<Pos> = [new Pos(tempPos.side, tempPos.surfacePos)];
-            for (let j = 0; j < repeat; j++) {
-                let flag = false;
-                for (let i=0; i<moveSequence.length; i++) {
-                    //console.log(pos.surfacePos, tempPos.surfacePos, range, i);
-                    verdict = restrictions
-                        .map((restriction) => this.isRestrictionLegal(board, piece, tempPos, moveSequence[i], restriction))
-                        .reduce((prev, e) =>
-                                (Object.fromEntries(
-                                    Object.entries(prev).map(
-                                        ([key, value]) =>
-                                            [key, value || e[key as keyof MotionVerdict]]
-                                    )
-                                ) as MotionVerdict)
-                            , {invalid: false, halt: false});
-                    //console.log(tempPos.surfacePos, moveSequence, verdict);
+                //let toAdd: Array<Pos> = [];
+                let seen: Array<Pos> = [new Pos(tempPos.side, tempPos.surfacePos)];
+                for (let j = 0; j < repeat; j++) {
+                    let flag = false;
+                    for (let i=0; i<moveSequence.length; i++) {
+                        //console.log(pos.surfacePos, tempPos.surfacePos, range, i);
+                        verdict = restrictions
+                            .map((restriction) => this.isRestrictionLegal(board, piece, tempPos, moveSequence[i], restriction))
+                            .reduce((prev, e) =>
+                                    (Object.fromEntries(
+                                        Object.entries(prev).map(
+                                            ([key, value]) =>
+                                                [key, value || e[key as keyof MotionVerdict]]
+                                        )
+                                    ) as MotionVerdict)
+                                , {invalid: false, halt: false});
+                        //console.log(tempPos.surfacePos, moveSequence, verdict);
 
-                    if (!tempPos.canSlide(moveSequence[i]) || (verdict.invalid && verdict.halt)) {
-                        flag = true;
+                        if (!tempPos.canSlide(moveSequence[i]) || (verdict.invalid && verdict.halt)) {
+                            flag = true;
+                            break;
+                        }
+                        let sv1 = SideVecs[tempPos.side];
+                        // console.log(verdict);
+                        // console.log(moveSequence[i], tempPos.side, tempPos.surfacePos, "before");
+                        moveSequence[i] = tempPos.slide(moveSequence[i]);
+                        let sv2 = SideVecs[tempPos.side];
+
+                        //board.highlight(tempPos);
+                        // console.log(moveSequence[i], tempPos.side, tempPos.surfacePos);
+                        // debugger;
+
+                        let quaternion = (new Quaternion()).setFromUnitVectors(sv1.norm.clone().normalize(), sv2.norm.clone().normalize());
+                        for (let k=i+1; k<moveSequence.length; k++) {
+                            let delta3 = (sv1.file.clone()).multiplyScalar(moveSequence[k].x)
+                                .add((sv1.rank.clone()).multiplyScalar(moveSequence[k].y))
+                                .applyQuaternion(quaternion);
+                            moveSequence[k] = new Vector2(delta3.dot(sv2.file), delta3.dot(sv2.rank));
+                        }
+                    }
+                    if (flag) {
+                        //console.log(2);
+                        //console.log(tempPos, moveSequence, j);
+                        //throw Error();
                         break;
                     }
-                    let sv1 = SideVecs[tempPos.side];
-                    // console.log(verdict);
-                    // console.log(moveSequence[i], tempPos.side, tempPos.surfacePos, "before");
-                    moveSequence[i] = tempPos.slide(moveSequence[i]);
-                    let sv2 = SideVecs[tempPos.side];
+                    //console.log(verdict, tempPos);
+                    //debugger;
 
-                    //board.highlight(tempPos);
-                    // console.log(moveSequence[i], tempPos.side, tempPos.surfacePos);
-                    // debugger;
-
-                    let quaternion = (new Quaternion()).setFromUnitVectors(sv1.norm.clone().normalize(), sv2.norm.clone().normalize());
-                    for (let k=i+1; k<moveSequence.length; k++) {
-                        let delta3 = (sv1.file.clone()).multiplyScalar(moveSequence[k].x)
-                            .add((sv1.rank.clone()).multiplyScalar(moveSequence[k].y))
-                            .applyQuaternion(quaternion);
-                        moveSequence[k] = new Vector2(delta3.dot(sv2.file), delta3.dot(sv2.rank));
+                    if (seen.some(e => tempPos.equals(e))) {
+                        break;
                     }
-                }
-                if (flag) {
-                    //console.log(2);
-                    //console.log(tempPos, moveSequence, j);
-                    //throw Error();
-                    break;
-                }
-                //console.log(verdict, tempPos);
-                //debugger;
-
-                if (seen.some(e => tempPos.equals(e))) {
-                    break;
-                }
-                if (!verdict.invalid) {
-                    if (!moves.some(e => tempPos.equals(e))) {
-                        //console.log('push');
-                        moves.push(new Pos(tempPos.side, tempPos.surfacePos));
+                    if (!verdict.invalid) {
+                        if (!moves.some(e => tempPos.equals(e))) {
+                            //console.log('push');
+                            moves.push(new Pos(tempPos.side, tempPos.surfacePos));
+                        }
                     }
+                    if (verdict.halt) {
+                        break;
+                    }
+                    seen.push(new Pos(tempPos.side, tempPos.surfacePos));
                 }
-                if (verdict.halt) {
-                    break;
-                }
-                seen.push(new Pos(tempPos.side, tempPos.surfacePos));
             }
-        }
-        return moves;
-    },
-    isAttacked(board: Board, piece: Piece, pos: Pos) {
-        for (let other of board.board.values()) {
-            if (other.variant.color != piece.variant.color
+            return moves;
+        },
+        isAttacked(board: Board, piece: Piece, pos: Pos) {
+            for (let other of board.board.values()) {
+                if (other.variant.color != piece.variant.color
                     && this.enumeratePossibleMoves(board, other, other.pos, [MotionRestriction.Capture, MotionRestriction.CaptureOtherColor, MotionRestriction.NoCaptureOwnColor], [MotionRestriction.NoCapture, MotionRestriction.NoCaptureOtherColor])
                         .some(pos.equals.bind(pos))) {
-                return true;
+                    return true;
+                }
             }
-        }
-        return false;
+            return false;
+        },
+        getGameState(game: Game): GameState {
+            const sameColorRoyalPieces = game.board.royalPieces.filter(
+                (piece) => piece.variant.color == game.activeColor
+            );
+            //console.log(sameColorRoyalPieces);
+            if (sameColorRoyalPieces.length <= 0) return GameState.KingCaptured;
+            for (let piece of game.board.board.values()) {
+                if (game.canMove(piece.pos)) {
+                    return GameState.Running;
+                }
+            }
+            return GameState.Stalemate;
+        },
+        motionRanges: {
+            [Category.Pawn]: [
+                {move: [Direction.Up], repeat: 2, restrictions: [MotionRestriction.FirstMove, MotionRestriction.NoCapture, MotionRestriction.NoPhase, MotionRestriction.White]},
+                {move: [Direction.Up], restrictions: [MotionRestriction.NoCapture, MotionRestriction.White]}, // Allow promotion, aka entering the top/bottom sides
+                {move: [Direction.UpRight], restrictions: [MotionRestriction.CaptureOtherColor, MotionRestriction.White]},
+                {move: [Direction.UpLeft], restrictions: [MotionRestriction.CaptureOtherColor, MotionRestriction.White]},
+
+                {move: [Direction.Down], repeat: 2, restrictions: [MotionRestriction.FirstMove, MotionRestriction.NoCapture, MotionRestriction.NoPhase, MotionRestriction.Black]},
+                {move: [Direction.Down], restrictions: [MotionRestriction.NoCapture, MotionRestriction.Black]},
+                {move: [Direction.DownRight], restrictions: [MotionRestriction.CaptureOtherColor, MotionRestriction.Black]},
+                {move: [Direction.DownLeft], restrictions: [MotionRestriction.CaptureOtherColor, MotionRestriction.Black]}
+            ],
+            [Category.Knight]: [
+                {move: [Direction.Up, Direction.Up, Direction.Left], restrictions: [MotionRestriction.NoCaptureOwnColor]},
+                {move: [Direction.Up, Direction.Up, Direction.Right], restrictions: [MotionRestriction.NoCaptureOwnColor]},
+                {move: [Direction.Down, Direction.Down, Direction.Left], restrictions: [MotionRestriction.NoCaptureOwnColor]},
+                {move: [Direction.Down, Direction.Down, Direction.Right], restrictions: [MotionRestriction.NoCaptureOwnColor]},
+                {move: [Direction.Right, Direction.Right, Direction.Up], restrictions: [MotionRestriction.NoCaptureOwnColor]},
+                {move: [Direction.Right, Direction.Right, Direction.Down], restrictions: [MotionRestriction.NoCaptureOwnColor]},
+                {move: [Direction.Left, Direction.Left, Direction.Up], restrictions: [MotionRestriction.NoCaptureOwnColor]},
+                {move: [Direction.Left, Direction.Left, Direction.Down], restrictions: [MotionRestriction.NoCaptureOwnColor]}
+            ],
+            [Category.Bishop]: [
+                {move: [Direction.UpRight], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
+                {move: [Direction.UpLeft], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
+                {move: [Direction.DownRight], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
+                {move: [Direction.DownLeft], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]}
+            ],
+            [Category.Rook]: [
+                {move: [Direction.Up], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
+                {move: [Direction.Down], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
+                {move: [Direction.Right], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
+                {move: [Direction.Left], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]}
+            ],
+            [Category.Queen]: [
+                {move: [Direction.UpRight], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
+                {move: [Direction.UpLeft], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
+                {move: [Direction.DownRight], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
+                {move: [Direction.DownLeft], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
+
+                {move: [Direction.Up], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
+                {move: [Direction.Down], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
+                {move: [Direction.Right], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]},
+                {move: [Direction.Left], repeat: -1, restrictions: [MotionRestriction.NoCaptureOwnColor, MotionRestriction.NoPhase]}
+            ],
+            [Category.King]: [
+                {move: [Direction.Up], restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
+                {move: [Direction.Down], restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
+                {move: [Direction.Right], restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
+                {move: [Direction.Left], restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
+
+                {move: [Direction.UpRight], restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
+                {move: [Direction.UpLeft], restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
+                {move: [Direction.DownRight], restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]},
+                {move: [Direction.DownLeft], restrictions: [MotionRestriction.NoPhase, MotionRestriction.NoCaptureOwnColor]}
+            ]
+        } as const,
+        startingFen6: 'pppppppp/8/8/8/8/8/8/PPPPPPPP|pppppppp/8/8/8/8/8/8/PPPPPPPP|rbbnnbbr/b6b/b6b/n3q2n/n2k3n/b6b/b6b/rbbnnbbr|RBBNNBBR/B6B/B6B/N2K3N/N3Q2N/B6B/B6B/RBBNNBBR|pppppppp/8/8/8/8/8/8/PPPPPPPP|pppppppp/8/8/8/8/8/8/PPPPPPPP:w' as const
     }
 }
 
 class PieceObserver {
-    /**
+    /!**
      * AFTER any move is done!!
-     */
+     *!/
     beforeInit(board: Board, piece: Piece) {}
     beforeThisMove(board: Board, piece: Piece) {
     }
@@ -809,6 +866,7 @@ class PawnObserver extends PieceObserver {
     }
 }
 class KingObserver extends PieceObserver {
+    #updateSquaresTimeout: ReturnType<typeof setTimeout> = setTimeout(()=>{});
     beforeInit(board: Board, piece: Piece) {
         piece.royal = true;
     }
@@ -819,9 +877,12 @@ class KingObserver extends PieceObserver {
         this.beforeThisMove(board, piece);
     }
     afterThisMove(board: Board, piece: Piece) {
-        if (board.rules.isAttacked(board, piece, piece.pos)) {
-            board.markChecked(piece.pos);
-        }
+        clearTimeout(this.#updateSquaresTimeout);
+        setTimeout(()=> {
+            if (board.isAttacked(piece, piece.pos)) {
+                board.markChecked(piece.pos);
+            }
+        });
     }
     afterOtherMove(board: Board, piece: Piece) {
         this.afterThisMove(board, piece);
@@ -830,7 +891,7 @@ class KingObserver extends PieceObserver {
         this.afterThisMove(board, piece);
     }
     afterOtherAdded(board: Board, piece: Piece) {
-        this.afterThisMove
+        this.afterThisMove(board, piece);
     }
 }
 const PieceObservers: Record<Category, PieceObserver> = {
@@ -853,13 +914,13 @@ type AnyPos = Pos | undefined;
 
 class Piece {
     graphics: PieceGraphics
-    variant!: Variant
+    variant!: PieceVariant
     #pos!: Pos // Initialized by assignment to this.pos which is called in constructor
     moved: boolean = false; // restrictions
     royal: boolean = false;
     alive: boolean = false; // For disposal reasons
 
-    constructor(pos: Pos, variant: Variant, graphicsConfig: GraphicsConfig) {
+    constructor(pos: Pos, variant: PieceVariant, graphicsConfig: GraphicsConfig) {
         this.graphics = new PieceGraphics(variant, graphicsConfig);
         this.variant = variant;
         this.pos = pos;
@@ -871,16 +932,16 @@ class Piece {
         this.#pos = pos;
         this.graphics.setPos(pos);
     }
-    setVariant(variant: Variant) {
+    setVariant(variant: PieceVariant) {
         this.variant = variant;
         this.graphics.setVariant(variant);
         this.graphics.setPos(this.pos);
     }
 
-    /**
+    /!**
      * NOTE: Use Board.movePiece instead!
      * @param move
-     */
+     *!/
     _slide(move: DeltaMove): DeltaMove {
         let out = this.pos.slide(move);
         //console.log('afterwards:', this.pos)
@@ -945,25 +1006,26 @@ class Board {
     graphicsConfig: GraphicsConfig
     board: Map<Pos, Piece> = new Map(); //Array<Array<Array<AnyPiece>>>
     annotationBoard: Map<Pos, AnnotationGroup> = new Map();
-    /**
+    /!**
      * Maps Object3D.id to logical object (e.g. This Board, Piece, Annotation, etc.)
-     */
+     *!/
     meshBoard: Map<number, Piece | Annotation | Board> = new Map();
     royalPieces: Array<Piece> = [];
-    rules: ChessRules = StandardChessRules; // TODO: Add game variants
+    rules: ChessRules; // TODO: Add game variants
     possibleMovesCache: Map<Piece, Array<Pos>> = new Map(); // TODO: Add cacheing
 
-    constructor(graphicsConfig: GraphicsConfig) {
+    constructor(rules: ChessRules, graphicsConfig: GraphicsConfig) {
+        this.rules = rules;
         this.graphics = new BoardGraphics(graphicsConfig);
         this.graphicsConfig = graphicsConfig;
-        this.meshBoard.set(this.graphics.boardObject.id, this); // NOTE: boardObject is the one with collision, not object!
+        this.meshBoard.set(this.graphics.boardMesh.id, this); // NOTE: boardObject is the one with collision, not object!
         //this.board = new Array(6).fill(undefined).map(u => new Array(8).fill(undefined).map(u => new Array(8).fill(undefined)))
     }
 
-    /**
+    /!**
      * Finds the accompanying logic object (e.g. Piece, Annotation, Board) for a Mesh
      * @param object
-     */
+     *!/
     getLogicalObjectFromMesh(object: THREE.Object3D) {
         //console.log(this.graphics.object.id);
         //console.log(this.meshBoard);
@@ -972,7 +1034,7 @@ class Board {
 
     // region Piece Management
 
-    addPiece(pos: Pos, variant: Variant) {
+    addPiece(pos: Pos, variant: PieceVariant) {
         const piece = new Piece(pos, variant, this.graphicsConfig);
         this._addExternalPiece(pos, piece);
         return piece;
@@ -988,7 +1050,7 @@ class Board {
         PieceObservers[piece.variant.category].beforeInit(this, piece);
         if (piece.royal) this.royalPieces.push(piece);
         piece.alive = true;
-        this.recalculateAllPossibleMoves();
+        this.invalidatePossibleMoves();
         this.meshBoard.set(piece.graphics.object.id, piece);
         this.graphics.add(piece.graphics);
         for (let selectedPiece of this.board.values()) {
@@ -1016,7 +1078,7 @@ class Board {
             this.board.delete(k);
             //console.log('deleted', this.board.get(k));
             v.pos = newPos;
-            this.recalculateAllPossibleMoves();
+            this.invalidatePossibleMoves();
             //console.log(v.pos.surfacePos);
             for (let piece of this.board.values()) {
                 if (piece == v) PieceObservers[piece.variant.category].afterThisMove(this, piece);
@@ -1032,7 +1094,7 @@ class Board {
             if (i >= 0) this.royalPieces.splice(i, 1);
             this.board.delete(k);
             v.alive = false;
-            this.recalculateAllPossibleMoves();
+            this.invalidatePossibleMoves();
             this.graphics.del(v.graphics);
         }
     }
@@ -1049,17 +1111,17 @@ class Board {
     getAnnotationGroup(groupPos: Pos) {
         const kv = [...this.annotationBoard].filter(
             ([key]) =>
-                /*groupPos === key
-                || (groupPos instanceof Pos && key instanceof Pos && */groupPos.equals(key)/*)*/
+                /!*groupPos === key
+                || (groupPos instanceof Pos && key instanceof Pos && *!/groupPos.equals(key)/!*)*!/
         ).pop();
         if (kv) return kv;
         return [undefined, undefined];
     }
-    /**
+    /!**
      * @param groupPos - What position the AnnotationGroup is linked to
      * @param annotationPos - Where the Annotation is actually rendered on the board
      * @param variant - Details about the Annotation
-     */
+     *!/
     addAnnotation(groupPos: Pos, annotationPos: Pos, variant: AnnotationVariant) {
         const annotation = new Annotation(annotationPos, variant, this.graphicsConfig);
         this._addExternalAnnotation(groupPos, annotation);
@@ -1095,11 +1157,11 @@ class Board {
         else throw Error('No annotationGroup at Pos!');
     }
 
-    /**
+    /!**
      * Shows all legal moves
      * @param pos1
      * @param prospective - Optional; If `true`, then `AnnotationVariant.ProspectiveMove` is used
-     */
+     *!/
     showPossibleMoves(pos1: Pos, prospective?: boolean) {
         const [pos, piece] = this.getPiece(pos1);
         if (!pos || !piece) throw Error('No piece at Pos!');
@@ -1108,7 +1170,7 @@ class Board {
             if (prospective) {
                 this.addAnnotation(pos, destination, AnnotationVariant.ProspectiveMove);
             }
-            else if (this.rules.isAttacked(this, piece, destination)) {
+            else if (this.isAttacked(piece, destination)) {
                 this.addAnnotation(pos, destination, AnnotationVariant.DangerousPossibleMove);
             }
             else {
@@ -1129,24 +1191,23 @@ class Board {
             }
         }
     }
-    recalculatePossibleMoves(pos1: Pos) {
-        const [pos, piece] = this.getPiece(pos1);
-        const [_, annotationGroup] = this.getAnnotationGroup(pos1);
-        if (!pos || !piece || !annotationGroup) return;
-        for (let annotation of annotationGroup.annotations.slice()) {
-            if (this.rules.isAttacked(this, piece, annotation.pos)) {
-                annotation.setVariant(AnnotationVariant.DangerousPossibleMove);
-            }
-            else {
-                annotation.setVariant(AnnotationVariant.PossibleMove);
-            }
-        }
-    }
-    recalculateAllPossibleMoves() {
+
+    // recalculatePossibleMoves(pos1: Pos) {
+    //     const [pos, piece] = this.getPiece(pos1);
+    //     const [_, annotationGroup] = this.getAnnotationGroup(pos1);
+    //     if (!pos || !piece || !annotationGroup) return;
+    //     for (let annotation of annotationGroup.annotations.slice()) {
+    //         if (this.isAttacked(piece, annotation.pos)) {
+    //             annotation.setVariant(AnnotationVariant.DangerousPossibleMove);
+    //         }
+    //         else {
+    //             annotation.setVariant(AnnotationVariant.PossibleMove);
+    //         }
+    //     }
+    // }
+    invalidatePossibleMoves() {
         this.possibleMovesCache.clear();
-        for (let pos of this.annotationBoard.keys()) {
-            this.recalculatePossibleMoves(pos);
-        }
+        // this.delAllAnnotations();
     }
     hideAllPossibleMoves() {
         for (let pos of this.annotationBoard.keys()) {
@@ -1194,17 +1255,17 @@ class Board {
         this._hideRecentMove(move.to);
     }
 
-    /**
+    /!**
      * @deprecated
-     */
+     *!/
     highlightMultiple(posarray: Array<Pos>) {
         for (let pos of posarray) {
             this.highlight(pos);
         }
     }
-    /**
+    /!**
      * @deprecated
-     */
+     *!/
     unhighlightMultiple(posarray: Array<Pos>) {
         for (let pos of posarray) {
             this.unhighlight(pos);
@@ -1241,18 +1302,18 @@ class Board {
 
     // endregion Annotation Management
 
-    /**
+    /!**
      * Moves a piece from point A to point B
      * @param move - A Move object
-     */
+     *!/
     move(move: Move) {
         this.movePiece(move.from, move.to);
     }
 
-    /**
+    /!**
      * Lists all legal moves a piece can make
      * @param piecePos - the Pos of the piece in question
-     */
+     *!/
     enumeratePossibleMoves(piecePos: Pos) {
         const [pos, piece] = this.getPiece(piecePos);
         if (!pos || !piece) throw Error('No piece at Pos!');
@@ -1260,11 +1321,14 @@ class Board {
         this.possibleMovesCache.set(piece, res);
         return res;
     }
+    isAttacked(piece: Piece, pos: Pos) {
+        return this.rules.isAttacked(this, piece, pos);
+    }
 
-    /**
+    /!**
      * Checks if a move is legal for the piece at `move.from`
      * @param move
-     */
+     *!/
     isPossibleMove(move: Move) {
         return this.enumeratePossibleMoves(move.from).some(move.to.equals.bind(move.to));
     }
@@ -1306,14 +1370,17 @@ class Board {
                     if (isNaN(Number(fenChar))) {
                         //console.log(fenChar);
                         this.addPiece(pos, ReverseFEN6Piece[fenChar as FEN6Piece]);
+                        if (pos.file >= 8) break;
                         pos.file++;
                     }
                     else {
                         pos.file += Number(fenChar);
                     }
                 }
+                if (pos.rank <= 1) break;
                 pos.rank--;
             }
+            if (pos.side >= 5) break;
             pos.side++;
         }
     }
@@ -1324,40 +1391,42 @@ class Board {
 class Game {
     graphics: GameGraphics
     board: Board
+    variant: GameVariant
     selected?: Pos
     #activeColor!: Color;
     moveHistory: Array<Move> = [];
     #invalid!: boolean;
 
-    constructor() {
+    constructor(variant: GameVariant) {
         this.graphics = new GameGraphics();
-        this.board = new Board(this.graphics.config);
+        this.variant = variant;
+        this.board = new Board(Rulebook[this.variant], this.graphics.config);
         this.graphics.addBoard(this.board.graphics);
         this.activeColor = Color.White;
-        this.invalid = true;
+        // this.invalid = true;
     }
 
-    /**
+    /!**
      * Finds the accompanying logic object (e.g. Piece, Annotation, Board) for a Mesh
      * @param mesh
-     */
+     *!/
     getLogicalObjectFromMesh(mesh: THREE.Object3D) {
         return this.board.getLogicalObjectFromMesh(mesh)
     }
 
-    get invalid(): boolean {
-        return this.#invalid;
-    }
-    set invalid(value: boolean) {
-        this.#invalid = value;
-    }
+    // get invalid(): boolean {
+    //     return this.#invalid;
+    // }
+    // set invalid(value: boolean) {
+    //     this.#invalid = value;
+    // }
 
     get activeColor(): Color {
         return this.#activeColor
     }
     set activeColor(color: Color) {
         this.#activeColor = color;
-        this.invalid = true;
+        // this.invalid = true;
         this.graphics.setPerspective(ColorPerspectives[this.#activeColor])
     }
     advanceActiveColor() {
@@ -1379,22 +1448,14 @@ class Game {
         this.moveHistory = [];
     }
 
-    /**
+    /!**
      * Determines if play can continue or is halted (e.g. no royal pieces left)
-     */
+     *!/
     getGameState(): GameState {
-        const sameColorRoyalPieces = this.board.royalPieces.filter((piece) => piece.variant.color == this.activeColor);
-        //console.log(sameColorRoyalPieces);
-        if (sameColorRoyalPieces.length <= 0) return GameState.KingCaptured;
-        for (let piece of this.board.board.values()) {
-            if (this.canMove(piece.pos)) {
-                return GameState.Running;
-            }
-        }
-        return GameState.Stalemate;
+        return Rulebook[this.variant].getGameState(this);
     }
 
-    addPiece(pos: Pos, variant: Variant) {
+    addPiece(pos: Pos, variant: PieceVariant) {
         if (!this.board.getPiece(pos)[0]) {
             return this.board.addPiece(pos, variant);
         }
@@ -1410,6 +1471,7 @@ class Game {
         this.board.unhighlight(move.to);
         if (this.recentMove) this.board.hideRecentMove(this.recentMove);
         this.unselect();
+
         if (!this.isPossibleMove(move)) { // At this point, we're just providing detailed error messages
             if (this.getGameState() != GameState.Running) throw Error('Pieces cannot be moved on a completed (gameOver-ed) board!');
             else if (!this.getPiece(move.from)) throw Error('No piece at (starting) Pos!');
@@ -1422,6 +1484,7 @@ class Game {
         this.board.showRecentMove(move);
         this.advanceActiveColor();
     }
+
     enumeratePossibleMoves(piecePos: Pos) {
         return this.board.enumeratePossibleMoves(piecePos);
     }
@@ -1436,6 +1499,7 @@ class Game {
         if (!piece) throw Error('No piece at Pos!');
         return piece.variant.color == this.activeColor && (!!this.board.enumeratePossibleMoves(piece.pos));
     }
+
     showPossibleMoves(piecePos: Pos) {
         this.board.showPossibleMoves(piecePos);
     }
@@ -1469,10 +1533,20 @@ class Game {
         }
     }
 
-    /**
+    /!**
+     * Call this BEFORE clearMoveHistory();
+     *!/
+    hideAllAnnotations() {
+        this.board.hideAllPossibleMoves();
+        this.board.unhighlightAll();
+        if (this.recentMove) this.board.hideRecentMove(this.recentMove);
+        this.unselect();
+    }
+
+    /!**
      * Looks at a point on the board
      * @deprecated
-     */
+     *!/
     focus(targetPos: Pos) { // TODO: Add notification for when an off-screen Pos is focused
         this.graphics.lookAt(targetPos);
     }
@@ -1496,185 +1570,16 @@ class Game {
         let split = (fenState as FEN6State).split(':');
         let [fenBoard, fenColor]: [FEN6Board, FEN6Color] = <[string, string]>split;
         this.activeColor = ReverseFEN6Color[fenColor];
-        this.board.fen6 = fenBoard;
-    }
-}
-
-class Controller {
-    graphics: GraphicsManager
-    game: Game
-
-    constructor() {
-        this.game = new Game();
-        this.graphics = new GraphicsManager(this);
-        this.update();
-    }
-
-    /**
-     * Finds the accompanying logic object (e.g. Piece, Annotation, Board) for a Mesh
-     * @param mesh
-     */
-    getLogicalObjectFromMesh(mesh: THREE.Object3D) {
-        return this.game.getLogicalObjectFromMesh(mesh)
-    }
-
-    loadPositionFromFEN(fenState: FEN6State) {
-        this.game.fen6 = fenState;
-        this.update();
-    }
-    savePositionAsFEN(): FEN6State {
-        return this.game.fen6;
-    }
-
-    getMoveHistory(): Array<Move> {
-        return this.game.moveHistory;
-    }
-    clearMoveHistory() {
-        this.game.clearMoveHistory();
-        this.update();
-    }
-    getActiveColor(): Color {
-        return this.game.activeColor;
-    }
-    getGameState(): GameState {
-        return this.game.getGameState();
-    }
-
-    /**
-     * @deprecated
-     */
-    beginTestRoutine() {
-        function rand(min: number, max: number) { // min and max included
-            return Math.floor(Math.random() * (max - min + 1) + min);
-        }
-        function randChoice<T>(i: ArrayLike<T>): T | undefined { // Empty array has undefined at [0]
-            return i[rand(0, i.length-1)]
-        }
-
-        //let piece2 = this.game.addPiece(new Pos(Side.Front, 4, 4), {category: Category.Queen, color: Color.White});
-        //this.game.showPossibleMoves(piece2.pos);
-        let piece3 = this.game.addPiece(new Pos(Side.Back, 3, 4), {category: Category.Pawn, color: Color.Black});
-        let piece = this.game.addPiece(new Pos(Side.Back, 4, 4), {category: Category.King, color: Color.White});
-        this.game.select(piece3.pos);
-        //this.game.move(new Move(piece3.pos, new Pos(Side.Back, 3, 5)))
-        let dests = this.game.enumeratePossibleMoves(piece.pos);
-        let dest = randChoice(dests);
-
-        if (!dest) return;
-
-        /*let interval = setInterval(() => {
-            //console.log(this.game.board.board);
-            //let king = this.game.addPiece(new Pos(Side.Front, 4, 4), {category: Category.King, color: Color.Black});
-            this.game.move(new Move(piece.pos, dest!));
-            this.game.showPossibleMoves(piece.pos);
-            dests = this.game.enumeratePossibleMoves(piece.pos);
-            dest = randChoice(dests);
-            if (!dest || !piece.alive) {
-                console.log('Done!');
-                clearInterval(interval);
-                return;
-            }
-            this.game.highlight(dest);
-
-            let oppdest = randChoice(this.game.enumeratePossibleMoves(piece3.pos));
-            if (!oppdest || !piece3.alive) {
-                console.log('Done!');
-                clearInterval(interval);
-                return;
-            }
-            //console.log(piece3.pos, oppdest);
-            this.game.move(new Move(piece3.pos, oppdest));
-            //this.game.focus(piece.pos);
-        }, 0);*/
-    }
-    newGame() {
+        this.hideAllAnnotations();
         this.clearMoveHistory();
-        this.loadPositionFromFEN(STARTING_POS);
-        this.game.focus(new Pos(Side.Front, 6, 7));
-        this.update();
-    }
-
-    /**
-     * Click handler
-     * @param logical - The logical object managing the object
-     * @param pos - The Pos of the object (relevant when `logical instanceof Board`)
-     */
-    onClick(logical: Board | Piece | Annotation, pos: Pos) {
-        let move: Move;
-        // console.log(this.game.selected);
-        // if (this.game.selected) {
-        //     console.log(pos)
-        // }
-        //console.log(this.game.selected, pos, this.game.isPossibleMove(new Move(this.game.selected!, pos)));
-        if (this.game.selected
-            && this.game.getPiece(this.game.selected)
-            && this.game.isPossibleMove(move = new Move(this.game.getPiece(this.game.selected)!, pos))) {
-            this.game.move(move);
-            this.update();
-            this.game.focus(move.to);
-        }
-        else {
-            this.game.hideAllPossibleMoves();
-            this.game.unhighlightAll();
-            let samePiece = false;
-            if (this.game.selected) {
-                samePiece = this.game.selected.equals(pos);
-                this.game.unselect();
-            }
-
-            if (!samePiece) {
-                let piece = this.game.getPiece(pos);
-                //console.log(piece);
-                if (piece != undefined) {
-                    this.game.select(pos);
-                }
-            }
-            //
-            // if (!this.game.selected) {
-            //     console.log(1)
-            //     let piece = this.game.getPiece(pos);
-            //     //console.log(piece);
-            //     if (piece != undefined) {
-            //         if (piece.variant.color == this.game.activeColor) this.game.select(pos);
-            //         else this.game.showPossibleMoves(pos);
-            //     }
-            // }
-            //
-            // if (this.game.selected && this.game.selected.equals(pos)) {
-            //     console.log(2)
-            //     this.game.unselect();
-            // }
-            // if (this.game.selected && !this.game.selected.equals(pos)) {
-            //     console.log(3);
-            //     this.game.unselect();
-            //     let piece = this.game.getPiece(pos);
-            //     this.game.hideAllPossibleMoves();
-            //     if (piece != undefined) {
-            //         if (piece.variant.color == this.game.activeColor) this.game.select(pos);
-            //         else this.game.showPossibleMoves(pos);
-            //     }
-            // }
-        }
-    }
-    onHover(logical: Board | Piece | Annotation, pos: Pos) {
-
-    }
-
-    update() {
-        setTimeout(()=> {
-            //console.log(this.graphics);
-            this.graphics.update();
-        }, 0);
-    }
-
-    animateForever() {
-        this.game.graphics.animateForever();
+        this.board.fen6 = fenBoard;
     }
 }
 
 // endregion Logic
 
-// region Graphics
+// endregion Old
+*/
 
 // Downwards decoupling from GameGraphics to rendered objects
 type BoardConfig = {
@@ -1693,93 +1598,169 @@ interface GraphicsConfig {
     annotation: AnnotationConfig
 }
 
-/*abstract class Graphics {
-    abstract object: THREE.Object3D
-    //abstract geometry: THREE.BufferGeometry
-    //abstract materials: Array<THREE.Material>
-    //abstract textures: Array<THREE.Texture>
-
-    /!**
-     * Delete the attached Object3D and its resources. Does NOT delete children, or "this".
-     *!/
-    dispose() {
-        this.geometry.dispose()
-        this.materials.forEach((e) => e.dispose());
-        this.textures.forEach((e) => e.dispose());
-        this.object.removeFromParent()
-    }
-}*/
-
 interface Graphics {
-    object: THREE.Mesh
+    object: THREE.Object3D
 }
 
-class PieceGraphics {
+class PieceGraphics implements Graphics {
     object: THREE.Mesh = new THREE.Mesh();
     config: GraphicsConfig
 
-    constructor(variant: Variant, graphicsConfig: GraphicsConfig) {
+    constructor(piece: Piece, graphicsConfig: GraphicsConfig) {
         this.config = graphicsConfig
         // Shares geometry & material so that it can be hotswapped in once assets are loaded
-        this.setVariant(variant);
+        // this.setVariant(piece.variant); // Done in this::catchUp
+        this.catchUp(piece);
+        // console.log('afterCatchUp', this.object.position);
+        this.subscribe(piece);
+        // console.log('afterConstructor', this.object.position);
+    }
+
+    catchUp(piece: Piece) {
+        this.setPos(piece.pos);
+        // console.log('afterSetPos', this.object.position)
+        this.setVariant(piece.variant);
+    }
+
+    subscribe(piece: Piece) {
+        piece.events.setPos.subscribe({next: this.setPos.bind(this)});
+        piece.events.setVariant.subscribe({next: this.setVariant.bind(this)});
     }
     setPos(pos: Pos) {
-        ////console.log('setting pos', pos);
-        //window.debug = this;
-        //window.debug1 = pos;
-        //window.debug2 = BaseVector
-        //this.object.pivot = pos.posvec.origin;
+        // console.log('setPos', this.object.id, pos.uci);
         this.object.position.copy(BaseVector.Zero);
-        this.object.lookAt(pos.posvec.direction/*.clone().normalize()*/);
-        this.object.position.copy(pos.posvec.origin);
-        //this.object.instanceMatrix.needsUpdate = true
-        //this.object.position.set(-3, 4, -3);
+        this.object.lookAt(pos.posvec.direction);
+        this.object.position.copy(pos.posvec.origin).multiplyScalar(SQUARE_WIDTH);
+        // console.log(this.object.position);
     }
-    setVariant(variant: Variant) {
+
+    setVariant(variant: PieceVariant) {
+        let position = this.object.position.clone();
+        let rotation = this.object.rotation.clone();
         this.object.copy(this.config.piece.templates[variant.category][variant.color]);
         this.object.scale.set(PIECE_SCALE, PIECE_SCALE, PIECE_SCALE);
+        this.object.position.copy(position);
+        this.object.rotation.copy(rotation);
     }
 }
 
-class AnnotationGraphics {
+class AnnotationGraphics implements Graphics {
     object: THREE.Mesh = new THREE.Mesh();
     config: GraphicsConfig
 
-    constructor(variant: AnnotationVariant, graphicsConfig: GraphicsConfig) {
+    constructor(annotation: Annotation, graphicsConfig: GraphicsConfig) {
         this.config = graphicsConfig;
-        this.setVariant(variant);
+        // this.setVariant(annotation.variant); // Done in this::catchUp
+        this.catchUp(annotation);
+        this.subscribe(annotation);
+    }
+
+    catchUp(annotation: Annotation) {
+        this.setPos(annotation.pos);
+        this.setVariant(annotation.variant);
+    }
+
+    subscribe(annotation: Annotation) {
+        annotation.events.setPos.subscribe({next: this.setPos.bind(this)});
+        annotation.events.setVariant.subscribe({next: this.setVariant.bind(this)});
     }
     setPos(pos: Pos) {
         this.object.position.copy(BaseVector.Zero);
         this.object.lookAt(pos.posvec.direction);
-        this.object.position.copy(pos.posvec.origin);
+        this.object.position.copy(pos.posvec.origin).multiplyScalar(SQUARE_WIDTH);
     }
     setVariant(variant: AnnotationVariant) {
+        let position = this.object.position.clone();
+        let rotation = this.object.rotation.clone();
         this.object.copy(this.config.annotation.templates[variant].clone());
+        this.object.position.copy(position);
+        this.object.rotation.copy(rotation);
     }
 }
 
-class BoardGraphics {
+class BoardGraphics implements Graphics {
     object: THREE.Object3D
-    boardObject: THREE.Mesh
+    boardMesh: THREE.Mesh
+    config: GraphicsConfig
+    pieceGraphicsBoard = new Map<Piece, PieceGraphics>();
+    annotationGraphicsBoard = new Map<Annotation, AnnotationGraphics>();
+    meshBoard = new Map<number, Piece | Annotation | Board>();
 
-    constructor(graphicsConfig: GraphicsConfig) {
+    constructor(board: Board, graphicsConfig: GraphicsConfig) {
         //let envTexture = graphicsConfig.envTexture;
+        this.config = graphicsConfig;
         this.object = new THREE.Object3D();
-        this.boardObject = graphicsConfig.board.template.clone();
-        this.object.add(this.boardObject);
+        this.boardMesh = graphicsConfig.board.template.clone();
+        this.object.add(this.boardMesh);
+        this.meshBoard.set(this.boardMesh.id, board);
+        this.catchUp(board);
+        this.subscribe(board);
     }
 
-    add(graphics: Graphics) {
+    catchUp(board: Board) {
+        for (let piece of Object.values(board.board)) this.addPiece(piece);
+        for (let annotation of Object.values(board.annotationBoard)) this.addAnnotation(annotation);
+    }
+
+    subscribe(board: Board) {
+        board.events.addPiece.subscribe({next: this.addPiece.bind(this)});
+        board.events.addAnnotation.subscribe({next: this.addAnnotation.bind(this)});
+        board.events.delPiece.subscribe({next: this.delPiece.bind(this)});
+        board.events.delAnnotation.subscribe({next: this.delAnnotation.bind(this)});
+    }
+
+    addPiece(piece: Piece) {
+        // console.log('addPiece', piece)
+        // console.log(piece.pos.posvec.origin);
+        let graphics = new PieceGraphics(piece, this.config);
+        this.pieceGraphicsBoard.set(piece, graphics);
         this.object.add(graphics.object);
+        this.registerObject3D(graphics, piece);
+        // console.log(graphics.object.id);
+        // console.log(this.meshBoard);
+        // console.log(piece.pos.posvec.origin);
+        // console.log(graphics.object.position);
         //console.log(this.object.id, graphics.object.id, graphics.object.type);
     }
-    del(graphics: Graphics) {
-        this.object.remove(graphics.object);
+
+    addAnnotation(annotation: Annotation) {
+        let graphics = new AnnotationGraphics(annotation, this.config);
+        this.annotationGraphicsBoard.set(annotation, graphics);
+        this.object.add(graphics.object);
+        this.registerObject3D(graphics, annotation);
     }
 
-    solveSurfacePos(pos3: Vector3): Pos {
-        return (new Pos()).setSurfacePosFromPos3(pos3);
+    delPiece(piece: Piece) {
+        if (!this.pieceGraphicsBoard.has(piece)) throw Error('No PieceGraphics associated with Piece!');
+        this.object.remove(this.pieceGraphicsBoard.get(piece)!.object);
+        this.unregisterObject3D(this.pieceGraphicsBoard.get(piece)!);
+        this.pieceGraphicsBoard.delete(piece);
+    }
+
+    delAnnotation(annotation: Annotation) {
+        if (!this.annotationGraphicsBoard.has(annotation)) throw Error('No PieceGraphics associated with Piece!')
+        this.object.remove(this.annotationGraphicsBoard.get(annotation)!.object);
+        this.unregisterObject3D(this.annotationGraphicsBoard.get(annotation)!);
+        this.annotationGraphicsBoard.delete(annotation);
+    }
+
+    registerObject3D(graphics: Graphics, logical: Piece | Annotation | Board) {
+        this.meshBoard.set(graphics.object.id, logical);
+    }
+
+    unregisterObject3D(graphics: Graphics) {
+        this.meshBoard.delete(graphics.object.id);
+    }
+
+    /**
+     * Finds the accompanying logic object (e.g. Piece, Annotation, Board) for a Mesh
+     * @param object
+     */
+    getLogicalFromObject3D(object: THREE.Object3D) {
+        //console.log(this.graphics.object.id);
+        //console.log(this.meshBoard);
+        // console.log(this.meshBoard.size);
+        return this.meshBoard.get(object.id);
     }
 }
 
@@ -1793,14 +1774,20 @@ class GameGraphics {
     bgTexture?: THREE.Texture
     config: GraphicsConfig
 
+    boardGraphics?: BoardGraphics
+
     #mousePos: Vector2 = new Vector2();
     raycaster: THREE.Raycaster = new THREE.Raycaster();
     //intersected: Array<THREE.Intersection> = [];
 
-    updateEvent: Event = new CustomEvent('update');
-    timer!: Timer;
+    // updateEvent: Event = new CustomEvent('update');
+    timer!: THREE.Timer;
 
-    constructor() {
+    // Rendering
+    #invalid: boolean = false;
+    #lastRenderTime: DOMHighResTimeStamp = performance.now();
+
+    constructor(game: Game) {
         this.createTimer();
         this.createScene();
         let boardConfig = this.generateBoardConfig();
@@ -1821,6 +1808,18 @@ class GameGraphics {
                 }
             }
         });
+        this.catchUp(game);
+        this.subscribe(game);
+    }
+
+    catchUp(game: Game) {
+        this.addBoard(game.board);
+        // this.updateThisColor(game.thisColor);
+    }
+
+    subscribe(game: Game) {
+        // game.events.updateThisColor.subscribe({next: this.updateThisColor.bind(this)});
+        // game.events.addBoard.subscribe({next: this.addBoard.bind(this)});
     }
     createScene() {
         this.scene = new THREE.Scene();
@@ -1834,6 +1833,7 @@ class GameGraphics {
         //this.effect = new StereoEffect(this.renderer);
         this.renderer.setPixelRatio(window.devicePixelRatio);
         //this.renderer.setSize(window.innerWidth, window.innerHeight);
+        //this.renderer.debug.checkShaderErrors = false;
 
         this.controls = new TrackballControls(this.camera);
         this.controls.staticMoving = true;
@@ -1950,9 +1950,9 @@ class GameGraphics {
                                 loader.load(
                                     `static/${label}.stl`,
                                     (geometry) => {
-                                        geometry.deleteAttribute('normal');
-                                        geometry = BufferGeometryUtils.mergeVertices(geometry, 0.02);
-                                        geometry.computeVertexNormals();
+                                        //geometry.deleteAttribute('normal');
+                                        //geometry = BufferGeometryUtils.mergeVertices(geometry, 0.02);
+                                        //geometry.computeVertexNormals();
 
                                         ////let geometry = new BoxGeometry(4, 6, 8);
                                         //const mesh1 = new THREE.InstancedMesh(geometry, whiteMaterial, 385 /* 8*8 squares * 6 sides + 1 */);
@@ -2079,7 +2079,7 @@ class GameGraphics {
         return {templates: templates as Record<AnnotationVariant, THREE.Mesh>}
     }
     createTimer() {
-        this.timer = new Timer();
+        this.timer = new THREE.Timer();
         this.timer.connect(document);
         this.timer.update();
     }
@@ -2090,11 +2090,22 @@ class GameGraphics {
         this.controls.connect(this.renderer.domElement);
         this.controls.handleResize();
         // @ts-ignore
-        this.controls.addEventListener('redraw', this.animateOnce.bind(this), {passive: true, capture: true});
+        this.controls.addEventListener('redraw', this.invalidate.bind(this), {passive: true, capture: true});
     }
 
-    addBoard(boardGraphics: BoardGraphics) {
-        this.scene.add(boardGraphics.object);
+    addBoard(board: Board) {
+        // console.log('addboard')
+        let graphics = new BoardGraphics(board, this.config);
+        this.boardGraphics = graphics;
+        this.scene.add(graphics.object);
+    }
+
+    /**
+     * Finds the accompanying logic object (e.g. Piece, Annotation, Board) for a Mesh
+     * @param object
+     */
+    getLogicalFromObject3D(object: THREE.Object3D) {
+        return this.boardGraphics?.getLogicalFromObject3D(object);
     }
 
     /**
@@ -2107,11 +2118,14 @@ class GameGraphics {
         // this.controls.rotateUp(this.controls.getPolarAngle() - polar);
         // this.controls.rotateLeft(this.controls.getAzimuthalAngle() - azimuthal);
     }
-    setPerspective(perspectiveCoefficient: ColorPerspective) { // TODO: See other note about Game::focus
+
+    updateThisColor(color: Color) { // TODO: See other note about Game::focus
+        // let perspectiveCoefficient = ColorPerspectives[color];
         // this.camera.up.setY(perspectiveCoefficient);
         // console.log(this.camera.up);
         // this.controls.rotateSpeed = ROTATE_SPEED * perspectiveCoefficient;
         //this.controls.update();
+        // this.camera.up.copy(ColorPerspectives[color]);
     }
 
     _animateOnce() {
@@ -2120,18 +2134,26 @@ class GameGraphics {
         //this.controls.update();
         let dt = this.timer.getDelta();
         this.timer.update();
-        this.renderer.domElement.dispatchEvent(this.updateEvent);
+        // this.renderer.domElement.dispatchEvent(this.updateEvent);
         this.renderer.render(this.scene, this.camera);
         // stats.end();
     }
-    animateOnce() {
-        this._animateOnce();
+
+    // animateOnce() {
+    //     this._animateOnce();
+    // }
+    invalidate() {
+        this.#invalid = true;
     }
     animateForever() {
-        this._animateOnce();
-        setTimeout(() => {
-            requestAnimationFrame(this.animateForever.bind(this));
-        }, 1000 / FRAMERATE);
+        //console.log(performance.now() - this.#lastRenderTime);
+        let time = performance.now();
+        if (this.#invalid || time - this.#lastRenderTime >= 1000 / FRAMERATE) {
+            this.#invalid = false;
+            this.#lastRenderTime = time;
+            this._animateOnce();
+        }
+        requestAnimationFrame(this.animateForever.bind(this));
     }
 
     onResize() {
@@ -2141,7 +2163,7 @@ class GameGraphics {
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(this.bounds.width, this.bounds.height);
         if (this.controls.domElement) this.controls.handleResize();
-        this.animateOnce();
+        this.invalidate();
     }
     getIntersectedObjects(e: MouseEvent | PointerEvent) {
         this.#mousePos.set(((e.clientX-this.bounds.left) / this.bounds.width) * 2 - 1, -((e.clientY-this.bounds.top) / this.bounds.height) * 2 + 1);
@@ -2153,7 +2175,7 @@ class GameGraphics {
 class GraphicsManager {
     rendererElement: HTMLCanvasElement
     controller: Controller
-    graphics: GameGraphics
+    gameGraphics: GameGraphics
 
     gameWrapper: HTMLElement = document.getElementById('game_wrapper')!; // Parent of rendererElement
     hudStatusBar: HTMLElement = document.getElementById('hud_statusbar')!; // Shows whose move it is
@@ -2169,23 +2191,24 @@ class GraphicsManager {
     #dragDistance: number = 0;
     #dragging: boolean = false;
     #lastClickTime: DOMHighResTimeStamp = performance.now();
+    #lastHoverTime: DOMHighResTimeStamp = performance.now();
 
     constructor(controller: Controller) {
         this.controller = controller;
-        this.graphics = this.controller.game.graphics;
-        this.rendererElement = this.graphics.renderer.domElement;
+        this.gameGraphics = new GameGraphics(this.controller.game);
+        this.rendererElement = this.gameGraphics.renderer.domElement;
 
         this.configureRendererElement();
-        this.graphics.connectControls();
+        this.gameGraphics.connectControls();
         this.configureEventListeners();
     }
     configureRendererElement() {
-        this.gameWrapper.appendChild(this.graphics.renderer.domElement);
-        this.graphics.onResize();
+        this.gameWrapper.appendChild(this.gameGraphics.renderer.domElement);
+        this.gameGraphics.onResize();
     }
     configureEventListeners() {
-        window.addEventListener('wheel', (e) => e.preventDefault(), {capture: true});
-        window.addEventListener('resize', this.graphics.onResize.bind(this.graphics));
+        //window.addEventListener('wheel', (e) => e.preventDefault(), {passive: false, capture: true});
+        window.addEventListener('resize', this.gameGraphics.onResize.bind(this.gameGraphics));
         window.addEventListener('pointermove', this.onMouseHover.bind(this));
         window.addEventListener('mousedown', this.onMouseDown.bind(this));
         window.addEventListener('mousemove', this.onMouseMove.bind(this));
@@ -2198,9 +2221,10 @@ class GraphicsManager {
         this.fen6Box.addEventListener('blur', this.loadFen6.bind(this), {passive: true});
         this.fen6Box.addEventListener(`focus`, this.fen6Box.select.bind(this.fen6Box), {passive: true});
         this.fen6Box.addEventListener('keyup', (e) => {
-            if (e.key === "Enter") this.fen6Box.blur();
+            if (e.key === "Enter") setTimeout(this.fen6Box.blur.bind(this.fen6Box), 0);
             }, {passive: true});
     }
+
     onMouseDown(e: MouseEvent) {
         this.#lastClickLocation.set(e.clientX, e.clientY);
         this.#lastLastClickLocation.set(e.clientX, e.clientY);
@@ -2213,16 +2237,19 @@ class GraphicsManager {
         this.#dragDistance += this.#lastLastClickLocation.distanceTo(this.#lastClickLocation);
         this.#dragging = this.#dragDistance > CLICK_DRAG_EPSILON;
     }
-
     onMouseHover(e: PointerEvent) {
-        const intersected = this.graphics.getIntersectedObjects(e);
+        let time = performance.now();
+        if (time - this.#lastHoverTime < 50) return;
+        this.#lastHoverTime = time;
+
+        const intersected = this.gameGraphics.getIntersectedObjects(e);
         for (let intersection of intersected) {
-            const logical = this.controller.getLogicalObjectFromMesh(intersection.object);
+            const logical = this.gameGraphics.getLogicalFromObject3D(intersection.object);
             if (logical instanceof Piece || logical instanceof Annotation) {
                 this.controller.onHover(logical, logical.pos);
             }
             else if (logical instanceof Board) {
-                this.controller.onHover(logical, logical.graphics.solveSurfacePos(intersection.point));
+                this.controller.onHover(logical, (new Pos()).setSurfacePosFromPos3(intersection.point.divideScalar(SQUARE_WIDTH)));
             }
             if (logical != undefined) {
                 this.setCursor(true);
@@ -2233,18 +2260,21 @@ class GraphicsManager {
     }
     onMouseClick(e: MouseEvent) {
         if (this.#dragging) return;
-        if (performance.now() - this.#lastClickTime < 100) return;
-        this.#lastClickTime = performance.now();
-        const intersected = this.graphics.getIntersectedObjects(e);
+        let time = performance.now();
+        if (time - this.#lastClickTime < 100) return;
+        this.#lastClickTime = time;
+
+        const intersected = this.gameGraphics.getIntersectedObjects(e);
         //console.log(intersected);
         for (let intersection of intersected) {
-            const logical = this.controller.getLogicalObjectFromMesh(intersection.object);
+            const logical = this.gameGraphics.getLogicalFromObject3D(intersection.object);
             if (logical instanceof Piece || logical instanceof Annotation) {
+                //console.log((logical as Piece).id, intersection.object.id);
                 this.controller.onClick(logical, logical.pos);
                 return;
             }
             else if (logical instanceof Board) {
-                this.controller.onClick(logical, logical.graphics.solveSurfacePos(intersection.point));
+                this.controller.onClick(logical, (new Pos()).setSurfacePosFromPos3(intersection.point.divideScalar(SQUARE_WIDTH)));
                 return;
             }
         }
@@ -2289,13 +2319,14 @@ class GraphicsManager {
             if (color == Color.White) this.hudStatusBar.innerText = 'White to Move';
             else this.hudStatusBar.innerText = 'Black to Move';
             return;
-        }
-        else if (gameState == GameState.KingCaptured) this.hudStatusBar.innerText = 'Game Over';
-        else if (gameState == GameState.Stalemate) this.hudStatusBar.innerText = 'Stalemate';
-        else throw Error('Invalid GameState!');
-
-        if (color == Color.White) this.dialogStatusBar.innerText = 'Black is victorious!';
-        else this.dialogStatusBar.innerText = 'White is victorious!';
+        } else if (gameState == GameState.KingCaptured) {
+            this.hudStatusBar.innerText = 'Game Over';
+            if (color == Color.White) this.dialogStatusBar.innerText = 'Black is victorious!';
+            else this.dialogStatusBar.innerText = 'White is victorious!';
+        } else if (gameState == GameState.Stalemate) {
+            this.hudStatusBar.innerText = 'Stalemate';
+            this.dialogStatusBar.innerText = 'Draw by stalemate';
+        } else throw Error('Invalid GameState!');
         this.dialog.showModal();
     }
     displayFen6() {
@@ -2318,12 +2349,148 @@ class GraphicsManager {
         this.displayFen6();
     }
 
+    animateForever() {
+        this.gameGraphics.animateForever();
+    }
 }
 
-// endregion Graphics
+class Controller {
+    graphics: GraphicsManager
+    game: Game
+
+    constructor() {
+        this.game = new Game(GameVariant.Standard);
+        this.graphics = new GraphicsManager(this);
+        // this.game.initialize();
+        this.update();
+    }
+
+    // region Helpers
+
+    loadPositionFromFEN(fenState: FEN6State) {
+        this.game.fen6 = fenState;
+    }
+
+    savePositionAsFEN(): FEN6State {
+        return this.game.fen6;
+    }
+
+    getMoveHistory(): Array<Move> {
+        return this.game.moveHistory;
+    }
+
+    clearMoveHistory() {
+        this.game.clearMoveHistory();
+    }
+
+    reset() {
+        this.game.reset();
+    }
+
+    getActiveColor(): Color {
+        return this.game.activeColor;
+    }
+
+    getGameState(): GameState {
+        return this.game.getGameState();
+    }
+
+    // endregion Helpers
+
+    // region Things that do stuff
+
+    newGame() {
+        this.reset();
+        this.loadPositionFromFEN(Rulebook[GameVariant.Standard].startingFen6); // TODO: Real variant support
+        // this.game.focus(new Pos(Side.Front, 6, 7));
+        this.update();
+    }
+
+    /**
+     * Click handler
+     * @param logical - The logical object managing the object
+     * @param pos - The Pos of the object (relevant when `logical instanceof Board`)
+     */
+    onClick(logical: Board | Piece | Annotation, pos: Pos) {
+        // console.log(logical, pos.side, pos.surfacePos, pos.posvec.origin);
+        this.game.highlight(pos);
+        let move: Move;
+        // console.log(this.game.selected);
+        // if (this.game.selected) {
+        //     console.log(pos)
+        // }
+        //console.log(this.game.selected, pos, this.game.isPossibleMove(new Move(this.game.selected!, pos)));
+        if (this.game.selected
+            && this.game.getPiece(this.game.selected)
+            && this.game.isPossibleMove(move = new Move(this.game.getPiece(this.game.selected)!, pos))) {
+            this.game.move(move);
+            this.update();
+            // this.game.focus(move.to);
+        } else {
+            this.game.hideAllPossibleMoves();
+            this.game.unhighlightAll();
+            let samePiece = false;
+            if (this.game.selected) {
+                samePiece = this.game.selected.equals(pos);
+                this.game.unselect();
+            }
+
+            if (!samePiece) {
+                let piece = this.game.getPiece(pos);
+                //console.log(piece);
+                if (piece != undefined) {
+                    this.game.select(pos);
+                }
+            }
+            //
+            // if (!this.game.selected) {
+            //     console.log(1)
+            //     let piece = this.game.getPiece(pos);
+            //     //console.log(piece);
+            //     if (piece != undefined) {
+            //         if (piece.variant.color == this.game.activeColor) this.game.select(pos);
+            //         else this.game.showPossibleMoves(pos);
+            //     }
+            // }
+            //
+            // if (this.game.selected && this.game.selected.equals(pos)) {
+            //     console.log(2)
+            //     this.game.unselect();
+            // }
+            // if (this.game.selected && !this.game.selected.equals(pos)) {
+            //     console.log(3);
+            //     this.game.unselect();
+            //     let piece = this.game.getPiece(pos);
+            //     this.game.hideAllPossibleMoves();
+            //     if (piece != undefined) {
+            //         if (piece.variant.color == this.game.activeColor) this.game.select(pos);
+            //         else this.game.showPossibleMoves(pos);
+            //     }
+            // }
+        }
+    }
+
+    onHover(logical: Board | Piece | Annotation, pos: Pos) {
+
+    }
+
+    update() {
+        setTimeout(() => { // Defer until all modifications are settled
+            this.graphics.update();
+        }, 0);
+    }
+
+    animateForever() {
+        this.graphics.animateForever();
+    }
+
+    // endregion Things that do stuff
+}
 
 let controller = new Controller();
 //controller.beginTestRoutine();
-//let startingPos = 'rnbrrbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBRRBNR|rnbrrbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBRRBNR|8/8/8/3k4/4q3/8/8/8|8/8/8/4K3/3Q4/8/8/8|rnbrrbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBRRBNR|rnbrrbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBRRBNR w';
 controller.newGame();
 controller.animateForever();
+
+
+// const socket = io();

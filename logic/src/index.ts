@@ -483,13 +483,13 @@ class Pos {
 
 class Move {
     piece: Piece
-    from: Pos
-    to: Pos
+    from: Pos = new Pos();
+    to: Pos = new Pos();
 
     constructor(piece: Piece, to: Pos) {
         this.piece = piece;
-        this.from = this.piece.pos;
-        this.to = to;
+        this.from.set(this.piece.pos);
+        this.to.set(to);
     }
 
     get uci(): UCIMove {
@@ -1126,7 +1126,7 @@ class Annotation {
     }
     // graphics: AnnotationGraphics
     variant!: AnnotationVariant
-    #pos!: Pos // Initialized indirectly in constructor
+    #pos: Pos = new Pos(); // Initialized indirectly in constructor
 
     constructor(pos: Pos, variant: AnnotationVariant/*, graphicsConfig: GraphicsConfig*/) {
         // this.graphics = new AnnotationGraphics(variant, graphicsConfig);
@@ -1140,7 +1140,7 @@ class Annotation {
     }
 
     set pos(pos: Pos) {
-        this.#pos = pos;
+        this.#pos.set(pos);
         this.events.setPos.next(pos);
     }
 
@@ -1518,11 +1518,13 @@ class Board {
     }
 
     showRecentMove(move: Move) {
+        // console.log('showrecentmove', move.from.uci, move.to.uci);
         this._showRecentMove(move.from);
         this._showRecentMove(move.to);
     }
 
     hideRecentMove(move: Move) {
+        // console.log('hiderecentmove', move.from.uci, move.to.uci);
         this._hideRecentMove(move.from);
         this._hideRecentMove(move.to);
     }
@@ -1720,7 +1722,6 @@ class Game {
         this.board.unhighlight(move.to);
         if (this.recentMove) this.board.hideRecentMove(this.recentMove);
         this.unselect();
-
         if (!this.isPossibleMove(move)) { // At this point, we're just providing detailed error messages
             if (this.getGameState() != GameState.Running) throw Error('Pieces cannot be moved on a completed (gameOver-ed) board!');
             else if (!this.getPiece(move.from)) throw Error('No piece at (starting) Pos!');
@@ -1729,6 +1730,7 @@ class Game {
             else throw Error('(Generic) not a possible move at this time!')
         } else this.board.move(move);
         this.recentMove = move;
+        // console.log('postmove', move.from.uci);
         this.board.showRecentMove(move);
         this.advanceActiveColor();
     }

@@ -946,6 +946,12 @@ class PieceObserver {
 
     afterOtherAdded(board: Board, piece: Piece) {
     }
+
+    afterThisSetVariant(board: Board, piece: Piece) {
+    }
+
+    afterOtherSetVariant(board: Board, piece: Piece) {
+    }
 }
 
 class PawnObserver extends PieceObserver {
@@ -953,17 +959,18 @@ class PawnObserver extends PieceObserver {
         piece.moved = true;
         if (piece.pos.side == Side.Top || piece.pos.side == Side.Bottom) {
             piece.moved = false;
-            piece.setVariant({category: Category.Queen, color: piece.variant.color});
+            board.setPieceVariant(piece.pos, {category: Category.Queen, color: piece.variant.color});
         }
     }
 
     afterThisAdded(board: Board, piece: Piece) {
-        if (piece.pos.rank != 1 && piece.pos.rank != 8) {
+        if (!((piece.pos.rank == 1 && piece.variant.color == Color.White)
+            || (piece.pos.rank == 8 && piece.variant.color == Color.Black))) {
             piece.moved = true;
         }
         if (piece.pos.side == Side.Top || piece.pos.side == Side.Bottom) {
             piece.moved = false;
-            piece.setVariant({category: Category.Queen, color: piece.variant.color});
+            board.setPieceVariant(piece.pos, {category: Category.Queen, color: piece.variant.color});
         }
     }
 }
@@ -971,6 +978,14 @@ class PawnObserver extends PieceObserver {
 class KingObserver extends PieceObserver {
     #updateSquaresTimeout: ReturnType<typeof setTimeout> = setTimeout(() => {
     });
+
+    afterThisMove(board: Board, piece: Piece) {
+        this.#updateSquares(board, piece);
+    }
+
+    afterOtherMove(board: Board, piece: Piece) {
+        this.#updateSquares(board, piece);
+    }
 
     beforeInit(board: Board, piece: Piece) {
         piece.royal = true;
@@ -984,25 +999,33 @@ class KingObserver extends PieceObserver {
         this.beforeThisMove(board, piece);
     }
 
-    afterThisMove(board: Board, piece: Piece) {
-        clearTimeout(this.#updateSquaresTimeout);
-        // setTimeout(()=> {
-        if (board.isAttacked(piece, piece.pos)) {
-            board.markChecked(piece.pos);
-        }
-        // });
-    }
-
-    afterOtherMove(board: Board, piece: Piece) {
-        this.afterThisMove(board, piece);
-    }
-
     afterThisAdded(board: Board, piece: Piece) {
-        this.afterThisMove(board, piece);
+        this.#updateSquares(board, piece);
     }
 
     afterOtherAdded(board: Board, piece: Piece) {
-        this.afterThisMove(board, piece);
+        this.#updateSquaresAsync(board, piece);
+    }
+
+    afterThisSetVariant(board: Board, piece: Piece) {
+        this.#updateSquares(board, piece);
+    }
+
+    afterOtherSetVariant(board: Board, piece: Piece) {
+        this.#updateSquares(board, piece);
+    }
+
+    #updateSquares(board: Board, piece: Piece) {
+        if (board.isAttacked(piece, piece.pos)) {
+            board.markChecked(piece.pos);
+        }
+    }
+
+    #updateSquaresAsync(board: Board, piece: Piece) {
+        clearTimeout(this.#updateSquaresTimeout);
+        this.#updateSquaresTimeout = setTimeout(() => {
+            this.#updateSquares(board, piece)
+        });
     }
 }
 
@@ -1036,7 +1059,7 @@ class Piece {
         setPos: new Subject()
     }
     // id: number;
-    variant!: PieceVariant
+    #variant!: PieceVariant
     moved: boolean = false; // restrictions
     royal: boolean = false;
     alive: boolean = false; // For disposal reasons
@@ -1045,7 +1068,7 @@ class Piece {
     constructor(pos: Pos, variant: PieceVariant) {
         // this.id = Math.random();
         // this.graphics = new PieceGraphics(variant, graphicsConfig);
-        this.setVariant(variant);
+        this.variant = variant;
         // setInterval(()=>{console.log(this.pos.uci)},0);
         this.pos = pos;
     }
@@ -1065,11 +1088,15 @@ class Piece {
     }
 
     set uci(uciPiece: UCIPiece) {
-        this.setVariant(ReverseUCIPiece[uciPiece]);
+        this.variant = ReverseUCIPiece[uciPiece];
     }
 
-    setVariant(variant: PieceVariant) {
-        this.variant = variant;
+    get variant(): PieceVariant {
+        return this.#variant;
+    }
+
+    set variant(variant: PieceVariant) {
+        this.#variant = variant;
         this.events.setVariant.next(variant);
         // this.events.setPos.next(this.pos);
     }
@@ -1168,7 +1195,7 @@ class Board {
         delPiece: new Subject(),
         delAnnotation: new Subject(),
     }
-    board: Map<Pos, Piece> = new Map(); //Array<Array<Array<AnyPiece>>>
+    board: Map<Pos, Piece> = new Map();
     annotationBoard: Map<Pos, AnnotationGroup> = new Map();
     /**
      * Maps Object3D.id to logical object (e.g. This Board, Piece, Annotation, etc.)
@@ -1176,7 +1203,8 @@ class Board {
     meshBoard: Map<number, Piece | Annotation | Board> = new Map();
     royalPieces: Array<Piece> = [];
     rules: ChessRules; // TODO: Add game variants
-    possibleMovesCache: Map<Piece, Array<Pos>> = new Map(); // TODO: Add cacheing
+    possibleMovesCache: Map<Piece, Array<Pos>> = new Map();
+    boardCache: Map<Pos, Piece> = new Map();
 
     constructor(rules: ChessRules) {
         this.rules = rules;
@@ -1256,42 +1284,55 @@ class Board {
         PieceObservers[piece.variant.category].beforeInit(this, piece);
         if (piece.royal) this.royalPieces.push(piece);
         piece.alive = true;
-        this.invalidatePossibleMoves();
+        this.invalidateBoard();
         for (let selectedPiece of this.board.values()) {
-            if (selectedPiece == piece) PieceObservers[selectedPiece.variant.category].afterOtherAdded(this, selectedPiece);
-            else PieceObservers[selectedPiece.variant.category].afterThisAdded(this, selectedPiece);
+            if (selectedPiece == piece) PieceObservers[selectedPiece.variant.category].afterThisAdded(this, selectedPiece);
+            else PieceObservers[selectedPiece.variant.category].afterOtherAdded(this, selectedPiece);
         }
         this.events.addPiece.next(piece);
         //console.log(piece.pos.uci);
     }
 
     getPiece(pos: Pos): [AnyPos, AnyPiece] {
+        let t = this.boardCache.get(pos);
+        if (t) return [pos, t];
         const kv = [...this.board].filter(([key]) => pos.equals(key)).pop();
-        if (kv) return kv;
-        return [undefined, undefined];
+        if (!kv) return [undefined, undefined];
+        this.boardCache.set(kv[0], kv[1]);
+        return kv;
     }
 
     movePiece(pos: Pos, newPos: Pos) {
         newPos = new Pos(newPos.side, newPos.surfacePos);
         //console.log(newPos.surfacePos, newPos.side)
         const [k, v] = this.getPiece(pos);
-        if (k != undefined && v != undefined) {
-            for (let piece of this.board.values()) {
-                if (piece == v) PieceObservers[piece.variant.category].beforeThisMove(this, piece);
-                else PieceObservers[piece.variant.category].beforeOtherMove(this, piece);
-            }
-            this.delPiece(newPos);
-            this.board.set(newPos, v);
-            //console.log('predelete', this.board.get(k), k.surfacePos);
-            this.board.delete(k);
-            //console.log('deleted', this.board.get(k));
-            v.pos = newPos;
-            this.invalidatePossibleMoves();
-            //console.log(v.pos.surfacePos);
-            for (let piece of this.board.values()) {
-                if (piece == v) PieceObservers[piece.variant.category].afterThisMove(this, piece);
-                else PieceObservers[piece.variant.category].afterOtherMove(this, piece);
-            }
+        if (k == undefined || v == undefined) throw Error('No piece at Pos!');
+        for (let piece of this.board.values()) {
+            if (piece == v) PieceObservers[piece.variant.category].beforeThisMove(this, piece);
+            else PieceObservers[piece.variant.category].beforeOtherMove(this, piece);
+        }
+        if (this.getPiece(newPos)[0]) this.delPiece(newPos);
+        this.board.set(newPos, v);
+        //console.log('predelete', this.board.get(k), k.surfacePos);
+        this.board.delete(k);
+        //console.log('deleted', this.board.get(k));
+        v.pos = newPos;
+        this.invalidateBoard();
+        //console.log(v.pos.surfacePos);
+        for (let piece of this.board.values()) {
+            if (piece == v) PieceObservers[piece.variant.category].afterThisMove(this, piece);
+            else PieceObservers[piece.variant.category].afterOtherMove(this, piece);
+        }
+
+    }
+
+    setPieceVariant(pos: Pos, variant: PieceVariant) {
+        const [k, v] = this.getPiece(pos);
+        if (!v) throw Error('No piece at Pos!');
+        v.variant = variant;
+        for (let piece of this.board.values()) {
+            if (piece == v) PieceObservers[piece.variant.category].afterThisSetVariant(this, piece);
+            else PieceObservers[piece.variant.category].afterOtherSetVariant(this, piece);
         }
     }
 
@@ -1301,15 +1342,14 @@ class Board {
 
     delPiece(pos: Pos) {
         const [k, v] = this.getPiece(pos);
-        if (k != undefined && v != undefined) {
-            // this.meshBoard.delete(v.graphics.object.id);
-            let i = this.royalPieces.indexOf(v);
-            if (i >= 0) this.royalPieces.splice(i, 1);
-            this.board.delete(k);
-            v.alive = false;
-            this.invalidatePossibleMoves();
-            this.events.delPiece.next(v);
-        }
+        if (k == undefined || v == undefined) throw Error('No piece at Pos!');
+        // this.meshBoard.delete(v.graphics.object.id);
+        let i = this.royalPieces.indexOf(v);
+        if (i >= 0) this.royalPieces.splice(i, 1);
+        this.board.delete(k);
+        v.alive = false;
+        this.invalidateBoard();
+        this.events.delPiece.next(v);
     }
 
     delAllPieces() {
@@ -1425,8 +1465,9 @@ class Board {
     }
 
     // }
-    invalidatePossibleMoves() {
+    invalidateBoard() {
         this.possibleMovesCache.clear();
+        this.boardCache.clear();
         // this.delAllAnnotations();
     }
 
@@ -1449,6 +1490,10 @@ class Board {
                 }
             }
         }
+    }
+
+    isHighlighted(pos: Pos) {
+        return !!this.getAnnotationGroup(pos)[1]?.annotations.some(annotation => annotation.variant == AnnotationVariant.Highlight);
     }
 
     unhighlightAll() {
@@ -1723,6 +1768,10 @@ class Game {
 
     unhighlight(pos: Pos) {
         this.board.unhighlight(pos);
+    }
+
+    isHighlighted(pos: Pos) {
+        return this.board.isHighlighted(pos);
     }
 
     unhighlightAll() {
